@@ -1,39 +1,46 @@
 services:
-  mysql:
-    image: mysql:8.0
-    container_name: steellink-admin-mysql
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: /api/v1
+    container_name: steellink-admin-frontend
     restart: unless-stopped
+    ports:
+      - "6666:80"
+    depends_on:
+      - backend
+    networks:
+      - steellink-network
+
+  backend:
+    build:
+      context: ./backend
+    container_name: steellink-admin-backend
+    restart: unless-stopped
+    ports:
+      - "6667:8080"
     environment:
-      MYSQL_ROOT_PASSWORD: root123
-      MYSQL_DATABASE: steellink
-      MYSQL_CHARSET: utf8mb4
-      MYSQL_COLLATION: utf8mb4_unicode_ci
-    ports:
-      - "3306:3306"
-    volumes:
-      - mysql_data:/var/lib/mysql
-      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
-    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+      - PORT=8080
+      - GIN_MODE=release
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRE=24h
+      - LOG_LEVEL=info
+      - LOG_FORMAT=json
+    networks:
+      - steellink-network
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
 
-  redis:
-    image: redis:7-alpine
-    container_name: steellink-admin-redis
-    restart: unless-stopped
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-volumes:
-  mysql_data:
-  redis_data:
+networks:
+  steellink-network:
+    driver: bridge
