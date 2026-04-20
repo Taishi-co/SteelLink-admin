@@ -6,18 +6,14 @@ WORKDIR /app
 # Install build dependencies
 RUN apk add --no-cache git ca-certificates tzdata
 
-# Copy go mod files
-COPY go.mod go.sum ./
-
-# 国内 GOPROXY 解决超时
+# 👉 路径必须加 backend/
+COPY backend/go.mod backend/go.sum ./
 ENV GOPROXY=https://goproxy.cn,direct
 ENV GO111MODULE=on
-
-# Download dependencies
 RUN go mod download
 
-# Copy source code
-COPY . .
+# 👉 复制后端代码
+COPY backend/ .
 
 # Build
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /server ./cmd/server
@@ -27,14 +23,11 @@ FROM alpine:3.19
 
 WORKDIR /app
 
-# Install runtime dependencies
 RUN apk add --no-cache ca-certificates tzdata
 
-# Copy binary & config
 COPY --from=builder /server .
 COPY --from=builder /app/config config
 
-# Non-root user
 RUN addgroup -g 1000 -S appgroup && \
     adduser -u 1000 -S appuser -G appgroup && \
     chown -R appuser:appgroup /app
