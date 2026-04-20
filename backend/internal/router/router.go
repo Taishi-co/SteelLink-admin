@@ -2,8 +2,8 @@ package router
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/Jijiang-co/SteelLink-admin/backend/internal/handler"
-	"github.com/Jijiang-co/SteelLink-admin/backend/internal/middleware"
+	"github.com/Taishi-co/SteelLink-admin/backend/internal/handler"
+	"github.com/Taishi-co/SteelLink-admin/backend/internal/middleware"
 )
 
 // RegisterRoutes registers all application routes

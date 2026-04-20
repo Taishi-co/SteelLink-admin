@@ -1,4 +1,4 @@
-module github.com/Jijiang-co/SteelLink-admin/backend
+module github.com/Taishi-co/SteelLink-admin/backend
 
 go 1.25.0
 

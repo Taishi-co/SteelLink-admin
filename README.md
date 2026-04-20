@@ -75,7 +75,7 @@ SteelLink-admin/
 
 **1. 克隆项目**
 ```bash
-git clone https://github.com/Jijiang-co/SteelLink-admin.git
+git clone https://github.com/Taishi-co/SteelLink-admin.git
 cd SteelLink-admin
 ```
 

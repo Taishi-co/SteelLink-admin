@@ -4,7 +4,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/Jijiang-co/SteelLink-admin/backend/internal/router"
+	"github.com/Taishi-co/SteelLink-admin/backend/internal/router"
 	"github.com/gin-gonic/gin"
 )
 
