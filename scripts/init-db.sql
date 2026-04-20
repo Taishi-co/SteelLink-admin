@@ -5,6 +5,16 @@
 SET NAMES utf8mb4;
 SET CHARACTER SET utf8mb4;
 
+-- ============================================================================
+-- Standard Fields Convention:
+-- id            - BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY
+-- created_by    - BIGINT UNSIGNED, creator ID (0 = system)
+-- created_at    - DATETIME, creation timestamp
+-- updated_by    - BIGINT UNSIGNED, last modifier ID (0 = system)
+-- updated_at    - DATETIME, last modification timestamp
+-- deleted_at    - DATETIME, soft delete (NULL = not deleted)
+-- ============================================================================
+
 -- Admin Users Table
 CREATE TABLE IF NOT EXISTS `admin_users` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -18,12 +28,16 @@ CREATE TABLE IF NOT EXISTS `admin_users` (
     `role_id` BIGINT UNSIGNED DEFAULT NULL COMMENT 'Role ID',
     `last_login_at` DATETIME DEFAULT NULL COMMENT 'Last login time',
     `last_login_ip` VARCHAR(45) DEFAULT '' COMMENT 'Last login IP',
-    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
-    `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    `deleted_at` DATETIME DEFAULT NULL,
+    `created_by` BIGINT UNSIGNED DEFAULT 0 COMMENT 'Creator ID',
+    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT 'Creation time',
+    `updated_by` BIGINT UNSIGNED DEFAULT 0 COMMENT 'Last modifier ID',
+    `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Last modification time',
+    `deleted_at` DATETIME DEFAULT NULL COMMENT 'Soft delete time',
     INDEX `idx_username` (`username`),
     INDEX `idx_status` (`status`),
-    INDEX `idx_role_id` (`role_id`)
+    INDEX `idx_role_id` (`role_id`),
+    INDEX `idx_created_at` (`created_at`),
+    INDEX `idx_deleted_at` (`deleted_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Admin users table';
 
 -- Admin Roles Table
@@ -34,11 +48,15 @@ CREATE TABLE IF NOT EXISTS `admin_roles` (
     `description` VARCHAR(255) DEFAULT '' COMMENT 'Role description',
     `status` TINYINT DEFAULT 1 COMMENT 'Status: 0-disabled, 1-enabled',
     `sort` INT DEFAULT 0 COMMENT 'Sort order',
-    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
-    `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    `deleted_at` DATETIME DEFAULT NULL,
+    `created_by` BIGINT UNSIGNED DEFAULT 0 COMMENT 'Creator ID',
+    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT 'Creation time',
+    `updated_by` BIGINT UNSIGNED DEFAULT 0 COMMENT 'Last modifier ID',
+    `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Last modification time',
+    `deleted_at` DATETIME DEFAULT NULL COMMENT 'Soft delete time',
     INDEX `idx_code` (`code`),
-    INDEX `idx_status` (`status`)
+    INDEX `idx_status` (`status`),
+    INDEX `idx_created_at` (`created_at`),
+    INDEX `idx_deleted_at` (`deleted_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Admin roles table';
 
 -- Admin Menus Table
@@ -53,11 +71,15 @@ CREATE TABLE IF NOT EXISTS `admin_menus` (
     `permission` VARCHAR(100) DEFAULT '' COMMENT 'Permission code',
     `status` TINYINT DEFAULT 1 COMMENT 'Status: 0-hidden, 1-visible',
     `sort` INT DEFAULT 0 COMMENT 'Sort order',
-    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
-    `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    `deleted_at` DATETIME DEFAULT NULL,
+    `created_by` BIGINT UNSIGNED DEFAULT 0 COMMENT 'Creator ID',
+    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT 'Creation time',
+    `updated_by` BIGINT UNSIGNED DEFAULT 0 COMMENT 'Last modifier ID',
+    `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Last modification time',
+    `deleted_at` DATETIME DEFAULT NULL COMMENT 'Soft delete time',
     INDEX `idx_parent_id` (`parent_id`),
-    INDEX `idx_status` (`status`)
+    INDEX `idx_status` (`status`),
+    INDEX `idx_created_at` (`created_at`),
+    INDEX `idx_deleted_at` (`deleted_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Admin menus table';
 
 -- Role Menu Association Table
@@ -65,13 +87,14 @@ CREATE TABLE IF NOT EXISTS `admin_role_menus` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     `role_id` BIGINT UNSIGNED NOT NULL COMMENT 'Role ID',
     `menu_id` BIGINT UNSIGNED NOT NULL COMMENT 'Menu ID',
-    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+    `created_by` BIGINT UNSIGNED DEFAULT 0 COMMENT 'Creator ID',
+    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT 'Creation time',
     UNIQUE KEY `uk_role_menu` (`role_id`, `menu_id`),
     INDEX `idx_role_id` (`role_id`),
     INDEX `idx_menu_id` (`menu_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Role menu association table';
 
--- Admin Operation Logs Table
+-- Admin Operation Logs Table (no soft delete, logs are immutable)
 CREATE TABLE IF NOT EXISTS `admin_operation_logs` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     `admin_id` BIGINT UNSIGNED NOT NULL COMMENT 'Admin ID',
@@ -85,7 +108,7 @@ CREATE TABLE IF NOT EXISTS `admin_operation_logs` (
     `request_body` TEXT COMMENT 'Request body',
     `response_code` INT DEFAULT 0 COMMENT 'Response code',
     `response_msg` VARCHAR(255) DEFAULT '' COMMENT 'Response message',
-    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT 'Creation time',
     INDEX `idx_admin_id` (`admin_id`),
     INDEX `idx_module` (`module`),
     INDEX `idx_created_at` (`created_at`)
@@ -103,13 +126,17 @@ CREATE TABLE IF NOT EXISTS `users` (
     `enterprise_id` BIGINT UNSIGNED DEFAULT NULL COMMENT 'Enterprise ID',
     `status` TINYINT DEFAULT 1 COMMENT 'Status: 0-disabled, 1-enabled',
     `last_login_at` DATETIME DEFAULT NULL COMMENT 'Last login time',
-    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
-    `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    `deleted_at` DATETIME DEFAULT NULL,
+    `created_by` BIGINT UNSIGNED DEFAULT 0 COMMENT 'Creator ID',
+    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT 'Creation time',
+    `updated_by` BIGINT UNSIGNED DEFAULT 0 COMMENT 'Last modifier ID',
+    `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Last modification time',
+    `deleted_at` DATETIME DEFAULT NULL COMMENT 'Soft delete time',
     INDEX `idx_username` (`username`),
     INDEX `idx_phone` (`phone`),
     INDEX `idx_enterprise_id` (`enterprise_id`),
-    INDEX `idx_status` (`status`)
+    INDEX `idx_status` (`status`),
+    INDEX `idx_created_at` (`created_at`),
+    INDEX `idx_deleted_at` (`deleted_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Users table';
 
 -- Enterprises Table (shared with SteelLink-backend)
@@ -130,12 +157,16 @@ CREATE TABLE IF NOT EXISTS `enterprises` (
     `audit_remark` VARCHAR(500) DEFAULT '' COMMENT 'Audit remark',
     `auditor_id` BIGINT UNSIGNED DEFAULT NULL COMMENT 'Auditor ID',
     `audited_at` DATETIME DEFAULT NULL COMMENT 'Audit time',
-    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
-    `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    `deleted_at` DATETIME DEFAULT NULL,
+    `created_by` BIGINT UNSIGNED DEFAULT 0 COMMENT 'Creator ID',
+    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT 'Creation time',
+    `updated_by` BIGINT UNSIGNED DEFAULT 0 COMMENT 'Last modifier ID',
+    `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Last modification time',
+    `deleted_at` DATETIME DEFAULT NULL COMMENT 'Soft delete time',
     INDEX `idx_name` (`name`),
     INDEX `idx_credit_code` (`credit_code`),
-    INDEX `idx_status` (`status`)
+    INDEX `idx_status` (`status`),
+    INDEX `idx_created_at` (`created_at`),
+    INDEX `idx_deleted_at` (`deleted_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Enterprises table';
 
 -- Products Table (shared with SteelLink-backend)
@@ -154,13 +185,17 @@ CREATE TABLE IF NOT EXISTS `products` (
     `audit_remark` VARCHAR(500) DEFAULT '' COMMENT 'Audit remark',
     `auditor_id` BIGINT UNSIGNED DEFAULT NULL COMMENT 'Auditor ID',
     `audited_at` DATETIME DEFAULT NULL COMMENT 'Audit time',
-    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
-    `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    `deleted_at` DATETIME DEFAULT NULL,
+    `created_by` BIGINT UNSIGNED DEFAULT 0 COMMENT 'Creator ID',
+    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT 'Creation time',
+    `updated_by` BIGINT UNSIGNED DEFAULT 0 COMMENT 'Last modifier ID',
+    `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Last modification time',
+    `deleted_at` DATETIME DEFAULT NULL COMMENT 'Soft delete time',
     INDEX `idx_name` (`name`),
     INDEX `idx_category_id` (`category_id`),
     INDEX `idx_enterprise_id` (`enterprise_id`),
-    INDEX `idx_status` (`status`)
+    INDEX `idx_status` (`status`),
+    INDEX `idx_created_at` (`created_at`),
+    INDEX `idx_deleted_at` (`deleted_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Products table';
 
 -- Product Categories Table (shared with SteelLink-backend)
@@ -172,12 +207,16 @@ CREATE TABLE IF NOT EXISTS `product_categories` (
     `icon` VARCHAR(255) DEFAULT '' COMMENT 'Icon URL',
     `sort` INT DEFAULT 0 COMMENT 'Sort order',
     `status` TINYINT DEFAULT 1 COMMENT 'Status: 0-disabled, 1-enabled',
-    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
-    `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    `deleted_at` DATETIME DEFAULT NULL,
+    `created_by` BIGINT UNSIGNED DEFAULT 0 COMMENT 'Creator ID',
+    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT 'Creation time',
+    `updated_by` BIGINT UNSIGNED DEFAULT 0 COMMENT 'Last modifier ID',
+    `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Last modification time',
+    `deleted_at` DATETIME DEFAULT NULL COMMENT 'Soft delete time',
     INDEX `idx_parent_id` (`parent_id`),
     INDEX `idx_code` (`code`),
-    INDEX `idx_status` (`status`)
+    INDEX `idx_status` (`status`),
+    INDEX `idx_created_at` (`created_at`),
+    INDEX `idx_deleted_at` (`deleted_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Product categories table';
 
 -- Orders Table (shared with SteelLink-backend, read-only for admin)
@@ -189,40 +228,48 @@ CREATE TABLE IF NOT EXISTS `orders` (
     `total_amount` DECIMAL(12,2) DEFAULT 0 COMMENT 'Total amount',
     `status` TINYINT DEFAULT 0 COMMENT 'Order status',
     `remark` VARCHAR(500) DEFAULT '' COMMENT 'Remark',
-    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
-    `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    `deleted_at` DATETIME DEFAULT NULL,
+    `created_by` BIGINT UNSIGNED DEFAULT 0 COMMENT 'Creator ID',
+    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT 'Creation time',
+    `updated_by` BIGINT UNSIGNED DEFAULT 0 COMMENT 'Last modifier ID',
+    `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Last modification time',
+    `deleted_at` DATETIME DEFAULT NULL COMMENT 'Soft delete time',
     INDEX `idx_order_no` (`order_no`),
     INDEX `idx_buyer_id` (`buyer_id`),
     INDEX `idx_seller_enterprise_id` (`seller_enterprise_id`),
-    INDEX `idx_status` (`status`)
+    INDEX `idx_status` (`status`),
+    INDEX `idx_created_at` (`created_at`),
+    INDEX `idx_deleted_at` (`deleted_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Orders table';
 
--- Insert default super admin
-INSERT INTO `admin_users` (`username`, `password`, `real_name`, `status`) VALUES
-('admin', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iAt6Z5EH', 'Super Admin', 1);
+-- ============================================================================
+-- Initial Data
+-- ============================================================================
+
+-- Insert default super admin (password: admin123, need to hash in production)
+INSERT INTO `admin_users` (`username`, `password`, `real_name`, `status`, `created_by`) VALUES
+('admin', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iAt6Z5EH', 'Super Admin', 1, 0);
 
 -- Insert default roles
-INSERT INTO `admin_roles` (`name`, `code`, `description`, `sort`) VALUES
-('Super Admin', 'super_admin', 'Full system access', 1),
-('Operations Admin', 'ops_admin', 'Operations management', 2),
-('Auditor', 'auditor', 'Content auditing', 3);
+INSERT INTO `admin_roles` (`name`, `code`, `description`, `sort`, `created_by`) VALUES
+('Super Admin', 'super_admin', 'Full system access', 1, 0),
+('Operations Admin', 'ops_admin', 'Operations management', 2, 0),
+('Auditor', 'auditor', 'Content auditing', 3, 0);
 
 -- Insert default menus
-INSERT INTO `admin_menus` (`parent_id`, `name`, `path`, `component`, `icon`, `type`, `permission`, `sort`) VALUES
-(0, 'Dashboard', '/dashboard', 'dashboard/index', 'DashboardOutlined', 1, 'dashboard', 1),
-(0, 'System', '/system', '', 'SettingOutlined', 1, 'system', 2),
-(2, 'Admin Management', '/system/admin', 'system/admin/index', '', 1, 'system:admin', 1),
-(2, 'Role Management', '/system/role', 'system/role/index', '', 1, 'system:role', 2),
-(2, 'Menu Management', '/system/menu', 'system/menu/index', '', 1, 'system:menu', 3),
-(0, 'User Management', '/user', '', 'UserOutlined', 1, 'user', 3),
-(5, 'User List', '/user/list', 'user/index', '', 1, 'user:list', 1),
-(0, 'Enterprise Management', '/enterprise', '', 'BankOutlined', 1, 'enterprise', 4),
-(6, 'Enterprise List', '/enterprise/list', 'enterprise/index', '', 1, 'enterprise:list', 1),
-(0, 'Product Management', '/product', '', 'ShoppingOutlined', 1, 'product', 5),
-(7, 'Product List', '/product/list', 'product/index', '', 1, 'product:list', 1),
-(7, 'Category Management', '/product/category', 'product/category/index', '', 1, 'product:category', 2);
+INSERT INTO `admin_menus` (`parent_id`, `name`, `path`, `component`, `icon`, `type`, `permission`, `sort`, `created_by`) VALUES
+(0, 'Dashboard', '/dashboard', 'dashboard/index', 'DashboardOutlined', 1, 'dashboard', 1, 0),
+(0, 'System', '/system', '', 'SettingOutlined', 1, 'system', 2, 0),
+(2, 'Admin Management', '/system/admin', 'system/admin/index', '', 1, 'system:admin', 1, 0),
+(2, 'Role Management', '/system/role', 'system/role/index', '', 1, 'system:role', 2, 0),
+(2, 'Menu Management', '/system/menu', 'system/menu/index', '', 1, 'system:menu', 3, 0),
+(0, 'User Management', '/user', '', 'UserOutlined', 1, 'user', 3, 0),
+(6, 'User List', '/user/list', 'user/index', '', 1, 'user:list', 1, 0),
+(0, 'Enterprise Management', '/enterprise', '', 'BankOutlined', 1, 'enterprise', 4, 0),
+(7, 'Enterprise List', '/enterprise/list', 'enterprise/index', '', 1, 'enterprise:list', 1, 0),
+(0, 'Product Management', '/product', '', 'ShoppingOutlined', 1, 'product', 5, 0),
+(8, 'Product List', '/product/list', 'product/index', '', 1, 'product:list', 1, 0),
+(8, 'Category Management', '/product/category', 'product/category/index', '', 1, 'product:category', 2, 0);
 
 -- Associate all menus with super admin role
-INSERT INTO `admin_role_menus` (`role_id`, `menu_id`)
-SELECT 1, id FROM `admin_menus`;
+INSERT INTO `admin_role_menus` (`role_id`, `menu_id`, `created_by`)
+SELECT 1, id, 0 FROM `admin_menus`;
