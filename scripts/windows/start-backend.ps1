@@ -10,8 +10,20 @@ param(
 $ErrorActionPreference = "Stop"
 
 function Resolve-GoExe {
-    $candidates = @(
-        (Join-Path $env:LOCALAPPDATA "Programs\Go-1.26.2\go\bin\go.exe"),
+    $goCommand = Get-Command go -ErrorAction SilentlyContinue
+    if ($goCommand) {
+        return $goCommand.Source
+    }
+
+    $candidates = @()
+
+    $localProgramRoot = Join-Path $env:LOCALAPPDATA "Programs"
+    if (Test-Path $localProgramRoot) {
+        $candidates += Get-ChildItem -Path $localProgramRoot -Directory -Filter "Go*" -ErrorAction SilentlyContinue |
+            ForEach-Object { Join-Path $_.FullName "go\bin\go.exe" }
+    }
+
+    $candidates += @(
         "C:\Program Files\Go\bin\go.exe",
         "C:\Go\bin\go.exe"
     )
@@ -22,7 +34,7 @@ function Resolve-GoExe {
         }
     }
 
-    throw "Go executable not found. Install Go locally or place it under $env:LOCALAPPDATA\Programs\Go-1.26.2."
+    throw "Go executable not found. Install Go and ensure `go` is on PATH, or install it into a standard Windows location."
 }
 
 $goExe = Resolve-GoExe

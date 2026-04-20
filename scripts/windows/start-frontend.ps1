@@ -4,13 +4,31 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function Invoke-Pnpm {
+    param(
+        [string[]]$Arguments
+    )
+
+    $pnpmCommand = Get-Command pnpm -ErrorAction SilentlyContinue
+    if ($pnpmCommand) {
+        & $pnpmCommand.Source @Arguments
+        return
+    }
+
+    $corepackCommand = Get-Command corepack -ErrorAction SilentlyContinue
+    if ($corepackCommand) {
+        & $corepackCommand.Source pnpm @Arguments
+        return
+    }
+
+    throw "pnpm not found. Enable it with Corepack (`corepack enable pnpm`) or install pnpm globally."
+}
+
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 Set-Location -LiteralPath (Join-Path $repoRoot "frontend")
-
-$env:PATH = "C:\Program Files\nodejs;C:\Program Files\nodejs\node_modules\corepack\shims;$env:PATH"
 
 Write-Host "Starting SteelLink admin frontend..." -ForegroundColor Cyan
 Write-Host "Frontend: http://localhost:$Port" -ForegroundColor DarkGray
 Write-Host "Proxy target: http://localhost:8080" -ForegroundColor DarkGray
 
-cmd /c "pnpm dev -- --host 0.0.0.0 --strictPort --port $Port"
+Invoke-Pnpm -Arguments @("dev", "--", "--host", "0.0.0.0", "--strictPort", "--port", "$Port")
