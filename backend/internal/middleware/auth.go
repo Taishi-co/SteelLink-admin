@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/Taishi-co/SteelLink-admin/backend/internal/auth"
 	"github.com/gin-gonic/gin"
 )
 
@@ -32,8 +33,6 @@ func Auth() gin.HandlerFunc {
 		}
 
 		token := parts[1]
-		// TODO: Validate JWT token
-		// For now, just check if token is not empty
 		if token == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"code":    401,
@@ -43,8 +42,19 @@ func Auth() gin.HandlerFunc {
 			return
 		}
 
-		// Set admin info in context
-		c.Set("admin_id", "1")
+		claims, err := auth.ParseAdminToken(token)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"code":    401,
+				"message": "unauthorized: token validation failed",
+			})
+			c.Abort()
+			return
+		}
+
+		c.Set("admin_id", claims.AdminID)
+		c.Set("admin_username", claims.Username)
+		c.Set("admin_real_name", claims.RealName)
 		c.Next()
 	}
 }

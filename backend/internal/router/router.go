@@ -1,9 +1,9 @@
 package router
 
 import (
-	"github.com/gin-gonic/gin"
 	"github.com/Taishi-co/SteelLink-admin/backend/internal/handler"
 	"github.com/Taishi-co/SteelLink-admin/backend/internal/middleware"
+	"github.com/gin-gonic/gin"
 )
 
 // RegisterRoutes registers all application routes
@@ -33,6 +33,9 @@ func RegisterRoutes(r *gin.Engine) {
 		protected := v1.Group("")
 		protected.Use(middleware.Auth())
 		{
+			protected.POST("/logout", handler.Logout)
+			protected.GET("/admin/info", handler.GetAdminInfo)
+
 			// Admin routes
 			protected.GET("/admins", handler.ListAdmins)
 			protected.GET("/admins/:id", handler.GetAdmin)
