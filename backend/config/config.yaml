@@ -1,0 +1,19 @@
+server:
+  port: ${PORT:8080}
+  mode: ${GIN_MODE:debug} # debug, release, test
+
+database:
+  host: ${DB_HOST:localhost}
+  port: ${DB_PORT:3306}
+  user: ${DB_USER:root}
+  password: ${DB_PASSWORD:}
+  dbname: ${DB_NAME:steellink}
+  charset: utf8mb4
+
+jwt:
+  secret: ${JWT_SECRET:steellink-admin-jwt-secret}
+  expire: ${JWT_EXPIRE:24h}
+
+log:
+  level: ${LOG_LEVEL:debug} # debug, info, warn, error
+  format: ${LOG_FORMAT:json} # json, text
