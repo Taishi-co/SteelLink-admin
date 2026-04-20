@@ -135,6 +135,10 @@ docker compose -f docker-compose.prod.yml up -d --build
 make logs
 ```
 
+**4. 访问地址**
+- 管理平台前端：`http://服务器IP:6666`
+- 后端 API：`http://服务器IP:6667`
+
 ### 常用命令
 
 | 命令 | 说明 |
