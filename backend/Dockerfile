@@ -9,7 +9,7 @@ RUN apk add --no-cache git ca-certificates tzdata
 # Copy go mod files
 COPY go.mod go.sum ./
 
-# ✅ 关键修复：国内 GOPROXY，解决下载超时
+# 国内 GOPROXY 解决超时
 ENV GOPROXY=https://goproxy.cn,direct
 ENV GO111MODULE=on
 
@@ -30,21 +30,19 @@ WORKDIR /app
 # Install runtime dependencies
 RUN apk add --no-cache ca-certificates tzdata
 
-# Copy binary from builder
+# Copy binary & config
 COPY --from=builder /server .
 COPY --from=builder /app/config config
 
-# Create non-root user
+# Non-root user
 RUN addgroup -g 1000 -S appgroup && \
     adduser -u 1000 -S appuser -G appgroup && \
     chown -R appuser:appgroup /app
 
 USER appuser
 
-# Expose port
 EXPOSE 8080
 
-# Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
 
