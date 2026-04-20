@@ -112,44 +112,85 @@ pnpm dev
 
 ## 生产部署
 
-### Docker 部署（推荐）
+### Docker 独立部署
 
-**1. 创建环境变量文件**
+#### 1. 部署后端
+
 ```bash
-cp .env.production .env
-# 编辑 .env，配置数据库连接和 JWT 密钥
+# 进入后端目录
+cd backend
+
+# 构建镜像
+docker build -t steellink-admin-backend .
+
+# 运行容器
+docker run -d \
+  --name steellink-admin-backend \
+  -p 6667:8080 \
+  -e DB_HOST=117.72.123.14 \
+  -e DB_PORT=3306 \
+  -e DB_USER=root \
+  -e DB_PASSWORD=你的密码 \
+  -e DB_NAME=steellink \
+  -e JWT_SECRET=你的JWT密钥 \
+  -e GIN_MODE=release \
+  steellink-admin-backend
+
+# 查看日志
+docker logs -f steellink-admin-backend
 ```
 
-**2. 构建并启动**
+#### 2. 部署前端
+
 ```bash
-make deploy
+# 进入前端目录
+cd frontend
+
+# 构建镜像（指定后端 API 地址）
+docker build \
+  --build-arg VITE_API_BASE_URL=http://117.72.123.14:6667/api/v1 \
+  -t steellink-admin-frontend .
+
+# 运行容器
+docker run -d \
+  --name steellink-admin-frontend \
+  -p 6666:80 \
+  --restart unless-stopped \
+  steellink-admin-frontend
+
+# 查看日志
+docker logs -f steellink-admin-frontend
 ```
 
-或使用 docker compose：
-```bash
-docker compose -f docker-compose.prod.yml up -d --build
-```
+#### 3. 访问地址
 
-**3. 查看日志**
-```bash
-make logs
-```
-
-**4. 访问地址**
 - 管理平台前端：`http://服务器IP:6666`
 - 后端 API：`http://服务器IP:6667`
 
 ### 常用命令
 
-| 命令 | 说明 |
-|------|------|
-| `make build` | 构建 Docker 镜像 |
-| `make up` | 启动服务 |
-| `make down` | 停止服务 |
-| `make logs` | 查看日志 |
-| `make deploy` | 构建并启动 |
+```bash
+# 查看运行状态
+docker ps
 
-### 手动部署
+# 查看日志
+docker logs -f steellink-admin-frontend
+docker logs -f steellink-admin-backend
+
+# 停止服务
+docker stop steellink-admin-frontend
+docker stop steellink-admin-backend
+
+# 删除容器
+docker rm steellink-admin-frontend
+docker rm steellink-admin-backend
+
+# 重新部署
+docker build -t steellink-admin-frontend . --no-cache
+docker run -d --name steellink-admin-frontend -p 6666:80 steellink-admin-frontend
+```
+
+### 本地构建部署
 
 **前端构建**
 ```bash
