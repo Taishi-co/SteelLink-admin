@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/Taishi-co/SteelLink-admin/backend/internal/store"
 	"github.com/Taishi-co/SteelLink-admin/backend/internal/router"
 	"github.com/gin-gonic/gin"
 )
@@ -16,6 +17,10 @@ func main() {
 
 	// Create Gin engine
 	r := gin.Default()
+
+	if err := store.InitDB(); err != nil {
+		log.Fatalf("Failed to connect database: %v", err)
+	}
 
 	// Register routes
 	router.RegisterRoutes(r)
