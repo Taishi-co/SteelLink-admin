@@ -283,6 +283,9 @@ func UpdateUserStatus(c *gin.Context) {
 func ListEnterprises(c *gin.Context) {
 	page, pageSize := parsePageParams(c)
 	db := store.DB().Model(&store.Enterprise{}).Where("deleted_at IS NULL")
+	if status := c.Query("status"); status != "" {
+		db = db.Where("status = ?", status)
+	}
 
 	var total int64
 	if err := db.Count(&total).Error; err != nil {
@@ -298,15 +301,17 @@ func ListEnterprises(c *gin.Context) {
 
 	list := make([]gin.H, 0, len(enterprises))
 	for _, enterprise := range enterprises {
+		auditRemark := parseAuditRemark(enterprise.Remark)
 		list = append(list, gin.H{
-			"id":           enterprise.ID,
-			"name":         enterprise.Name,
-			"shortName":    enterprise.EnterpriseCode,
-			"creditCode":   enterprise.CreditCode,
+			"id":            enterprise.ID,
+			"name":          enterprise.Name,
+			"shortName":     enterprise.EnterpriseCode,
+			"creditCode":    enterprise.CreditCode,
 			"contactPerson": "",
-			"contactPhone":  "",
-			"status":       enterprise.Status,
-			"createdAt":    enterprise.CreatedAt.Format("2006-01-02 15:04:05"),
+			"contactPhone":   "",
+			"status":        enterprise.Status,
+			"auditRemark":   auditRemark,
+			"createdAt":     enterprise.CreatedAt.Format("2006-01-02 15:04:05"),
 		})
 	}
 
@@ -363,6 +368,9 @@ func AuditEnterprise(c *gin.Context) {
 func ListProducts(c *gin.Context) {
 	page, pageSize := parsePageParams(c)
 	db := store.DB().Model(&store.Product{}).Where("deleted_at IS NULL")
+	if status := c.Query("status"); status != "" {
+		db = db.Where("status = ?", status)
+	}
 
 	var total int64
 	if err := db.Count(&total).Error; err != nil {
@@ -383,16 +391,72 @@ func ListProducts(c *gin.Context) {
 			spec = "-"
 		}
 		list = append(list, gin.H{
-			"id":          product.ID,
-			"name":        product.Name,
-			"spec":        spec,
-			"unit":        "吨",
-			"price":       product.UnitPrice,
-			"stock":       product.AvailableQty,
-			"status":      product.Status,
-			"createdAt":   product.CreatedAt.Format("2006-01-02 15:04:05"),
+			"id":           product.ID,
+			"name":         product.Name,
+			"spec":         spec,
+			"unit":         "吨",
+			"price":        product.UnitPrice,
+			"stock":        product.AvailableQty,
+			"status":       product.Status,
+			"auditRemark":  product.AuditRemark,
+			"createdAt":    product.CreatedAt.Format("2006-01-02 15:04:05"),
 			"enterpriseId": product.EnterpriseID,
 		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "success",
+		"data": gin.H{
+			"list":  list,
+			"total": total,
+		},
+	})
+}
+
+// ListOrders returns list of orders
+func ListOrders(c *gin.Context) {
+	page, pageSize := parsePageParams(c)
+	db := store.DB().Model(&store.Order{}).Where("deleted_at IS NULL")
+
+	var total int64
+	if err := db.Count(&total).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+
+	var orders []store.Order
+	if err := db.Order("id desc").Offset((page-1)*pageSize).Limit(pageSize).Find(&orders).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+
+	list := make([]gin.H, 0, len(orders))
+	for _, order := range orders {
+		item := gin.H{
+			"id":                 order.ID,
+			"orderNo":            order.OrderNo,
+			"buyerId":            order.BuyerID,
+			"buyerName":          order.BuyerName,
+			"sellerId":           order.SellerID,
+			"sellerEnterpriseId": order.SellerEnterpriseID,
+			"sellerName":         order.SellerName,
+			"totalQuantity":      order.TotalQuantity,
+			"totalAmount":        order.TotalAmount,
+			"taxTotalAmount":     order.TaxTotalAmount,
+			"currency":           order.Currency,
+			"status":             order.Status,
+			"deliveryVoucher":    order.DeliveryVoucher,
+			"receiptVoucher":     order.ReceiptVoucher,
+			"createdAt":          order.CreatedAt.Format("2006-01-02 15:04:05"),
+		}
+		if order.ExpiresAt != nil {
+			item["expiresAt"] = order.ExpiresAt.Format("2006-01-02 15:04:05")
+		}
+		if order.ReceiptAt != nil {
+			item["receiptAt"] = order.ReceiptAt.Format("2006-01-02 15:04:05")
+		}
+		list = append(list, item)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -468,6 +532,21 @@ func marshalRemark(remark string) string {
 		"audit_reason": remark,
 	})
 	return string(value)
+}
+
+func parseAuditRemark(raw string) string {
+	if raw == "" {
+		return ""
+	}
+
+	var payload map[string]string
+	if err := json.Unmarshal([]byte(raw), &payload); err == nil {
+		if value := payload["audit_reason"]; value != "" {
+			return value
+		}
+	}
+
+	return raw
 }
 
 // CreateProductCategory creates a new product category

@@ -13,6 +13,7 @@ const MenuList = lazy(() => import('../pages/system/menu'))
 const UserList = lazy(() => import('../pages/user'))
 const EnterpriseList = lazy(() => import('../pages/enterprise'))
 const ProductList = lazy(() => import('../pages/product'))
+const OrderList = lazy(() => import('../pages/order'))
 const CategoryList = lazy(() => import('../pages/product/category'))
 
 // Loading component
@@ -92,6 +93,10 @@ export const router = createBrowserRouter([
           {
             index: true,
             element: <ProductList />,
+          },
+          {
+            path: 'order',
+            element: <OrderList />,
           },
           {
             path: 'category',

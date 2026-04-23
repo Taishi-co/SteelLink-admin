@@ -48,6 +48,7 @@ const menuItems = [
     label: 'Product Management',
     children: [
       { key: '/product', label: 'Product List' },
+      { key: '/product/order', label: 'Order List' },
       { key: '/product/category', label: 'Category Management' },
     ],
   },

@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { Card, Table, Tag, Button, Space, Modal, message } from 'antd'
+import { Card, Table, Button, Space, Modal, Select, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { enterpriseApi, EnterpriseItem, PageParams } from '../../services/api'
+import { enterpriseStatusMeta, renderStatusTag } from '../../utils/status'
 
 export default function EnterpriseList() {
   const [params, setParams] = useState<PageParams>({ page: 1, pageSize: 10 })
@@ -17,7 +18,7 @@ export default function EnterpriseList() {
     mutationFn: ({ id, status, auditRemark }: { id: number; status: number; auditRemark?: string }) =>
       enterpriseApi.audit(id, { status, auditRemark }),
     onSuccess: () => {
-      message.success('审核已更新')
+      message.success('企业审核状态已更新')
       queryClient.invalidateQueries({ queryKey: ['enterprises'] })
     },
   })
@@ -41,11 +42,14 @@ export default function EnterpriseList() {
       title: 'Status',
       dataIndex: 'status',
       key: 'status',
-      render: (status: number) => {
-        const colors = { 0: 'orange', 1: 'green', 2: 'red' }
-        const texts = { 0: 'Pending', 1: 'Approved', 2: 'Rejected' }
-        return <Tag color={colors[status as 0 | 1 | 2]}>{texts[status as 0 | 1 | 2]}</Tag>
-      },
+      render: (status: number) => renderStatusTag(status, enterpriseStatusMeta),
+    },
+    {
+      title: '审核备注',
+      dataIndex: 'auditRemark',
+      key: 'auditRemark',
+      width: 220,
+      render: (value?: string) => value || '-',
     },
     {
       title: 'Created At',
@@ -56,18 +60,36 @@ export default function EnterpriseList() {
     {
       title: 'Actions',
       key: 'actions',
-      width: 120,
+      width: 180,
       render: (_, record) => (
         <Space>
-          <Button type="link" size="small" onClick={() => handleAudit(record, 1)}>Approve</Button>
-          <Button type="link" danger size="small" onClick={() => handleAudit(record, 2)}>Reject</Button>
+          <Button type="link" size="small" disabled={record.status === 1} onClick={() => handleAudit(record, 1)}>
+            通过
+          </Button>
+          <Button type="link" danger size="small" disabled={record.status === 2} onClick={() => handleAudit(record, 2)}>
+            驳回
+          </Button>
         </Space>
       ),
     },
   ]
 
   return (
-    <Card title="Enterprise Management">
+    <Card title="企业审核">
+      <Space className="mb-4" wrap>
+        <Select
+          value={params.status}
+          placeholder="筛选审核状态"
+          allowClear
+          style={{ width: 180 }}
+          onChange={(status) => setParams({ ...params, page: 1, status })}
+          options={[
+            { label: '待审核', value: 0 },
+            { label: '已通过', value: 1 },
+            { label: '已驳回', value: 2 },
+          ]}
+        />
+      </Space>
       <Table
         columns={columns}
         dataSource={data?.data.data.list || []}
