@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -530,19 +531,30 @@ func ListEnterprises(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
 	limit, offset := parsePageParams(c.Query("page"), c.Query("pageSize"))
+	whereParts := []string{"deleted_at IS NULL"}
+	args := make([]any, 0)
+	if status := c.Query("status"); status != "" {
+		statusValue, err := strconv.Atoi(status)
+		if err == nil {
+			whereParts = append(whereParts, "status = ?")
+			args = append(args, statusValue)
+		}
+	}
+	whereClause := strings.Join(whereParts, " AND ")
 
-	total, err := queryCount(ctx, db, `SELECT COUNT(*) FROM enterprises WHERE deleted_at IS NULL`)
+	total, err := queryCount(ctx, db, fmt.Sprintf(`SELECT COUNT(*) FROM enterprises WHERE %s`, whereClause), args...)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 		return
 	}
 
-	rows, err := db.QueryContext(ctx, `
-		SELECT id, name, COALESCE(credit_code, ''), status, created_at, verification_info
+	queryArgs := append(append([]any{}, args...), limit, offset)
+	rows, err := db.QueryContext(ctx, fmt.Sprintf(`
+		SELECT id, name, COALESCE(credit_code, ''), status, created_at, verification_info, COALESCE(audit_remark, ''), COALESCE(remark, '')
 		FROM enterprises
-		WHERE deleted_at IS NULL
+		WHERE %s
 		ORDER BY id DESC
-		LIMIT ? OFFSET ?`, limit, offset)
+		LIMIT ? OFFSET ?`, whereClause), queryArgs...)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 		return
@@ -554,7 +566,9 @@ func ListEnterprises(c *gin.Context) {
 		var item enterpriseItem
 		var verification sql.NullString
 		var createdAt sql.NullTime
-		if err := rows.Scan(&item.ID, &item.Name, &item.CreditCode, &item.Status, &createdAt, &verification); err != nil {
+		var auditRemark sql.NullString
+		var legacyRemark sql.NullString
+		if err := rows.Scan(&item.ID, &item.Name, &item.CreditCode, &item.Status, &createdAt, &verification, &auditRemark, &legacyRemark); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 			return
 		}
@@ -566,6 +580,11 @@ func ListEnterprises(c *gin.Context) {
 		item.ContactPerson = info.ContactName
 		item.ContactPhone = info.ContactPhone
 		item.Address = info.Address
+		if auditRemark.Valid && auditRemark.String != "" {
+			item.AuditRemark = auditRemark.String
+		} else if legacyRemark.Valid {
+			item.AuditRemark = parseLegacyAuditRemark(legacyRemark.String)
+		}
 		items = append(items, item)
 	}
 
@@ -711,19 +730,37 @@ func ListProducts(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
 	limit, offset := parsePageParams(c.Query("page"), c.Query("pageSize"))
+	whereParts := []string{"deleted_at IS NULL"}
+	args := make([]any, 0)
+	if status := c.Query("status"); status != "" {
+		statusValue, err := strconv.Atoi(status)
+		if err == nil {
+			rawStatus := "pending_review"
+			switch statusValue {
+			case 1:
+				rawStatus = "approved"
+			case 2:
+				rawStatus = "rejected"
+			}
+			whereParts = append(whereParts, "status = ?")
+			args = append(args, rawStatus)
+		}
+	}
+	whereClause := strings.Join(whereParts, " AND ")
 
-	total, err := queryCount(ctx, db, `SELECT COUNT(*) FROM products WHERE deleted_at IS NULL`)
+	total, err := queryCount(ctx, db, fmt.Sprintf(`SELECT COUNT(*) FROM products WHERE %s`, whereClause), args...)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 		return
 	}
 
-	rows, err := db.QueryContext(ctx, `
-		SELECT id, name, enterprise_id, COALESCE(specs, ''), COALESCE(unit, ''), price, stock, COALESCE(description, ''), image_urls, status, created_at
+	queryArgs := append(append([]any{}, args...), limit, offset)
+	rows, err := db.QueryContext(ctx, fmt.Sprintf(`
+		SELECT id, name, enterprise_id, COALESCE(specs, ''), COALESCE(unit, ''), price, stock, COALESCE(description, ''), image_urls, status, created_at, COALESCE(audit_remark, '')
 		FROM products
-		WHERE deleted_at IS NULL
+		WHERE %s
 		ORDER BY id DESC
-		LIMIT ? OFFSET ?`, limit, offset)
+		LIMIT ? OFFSET ?`, whereClause), queryArgs...)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 		return
@@ -735,12 +772,16 @@ func ListProducts(c *gin.Context) {
 		var item productItem
 		var imageURLs sql.NullString
 		var rawStatus string
-		if err := rows.Scan(&item.ID, &item.Name, &item.EnterpriseID, &item.Spec, &item.Unit, &item.Price, &item.Stock, &item.Description, &imageURLs, &rawStatus, &item.CreatedAt); err != nil {
+		var auditRemark sql.NullString
+		if err := rows.Scan(&item.ID, &item.Name, &item.EnterpriseID, &item.Spec, &item.Unit, &item.Price, &item.Stock, &item.Description, &imageURLs, &rawStatus, &item.CreatedAt, &auditRemark); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 			return
 		}
 		item.Images = parseImages(imageURLs)
 		item.Status = mapProductStatus(rawStatus)
+		if auditRemark.Valid {
+			item.AuditRemark = auditRemark.String
+		}
 		items = append(items, item)
 	}
 
@@ -748,6 +789,76 @@ func ListProducts(c *gin.Context) {
 		"code":    0,
 		"message": "success",
 		"data":    pageResult[productItem]{List: items, Total: total},
+	})
+}
+
+// ListOrders returns list of orders
+func ListOrders(c *gin.Context) {
+	db := database.GetDB()
+	if db == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"code": 503, "message": "database unavailable"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+	limit, offset := parsePageParams(c.Query("page"), c.Query("pageSize"))
+
+	total, err := queryCount(ctx, db, `SELECT COUNT(*) FROM orders WHERE deleted_at IS NULL`)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+
+	rows, err := db.QueryContext(ctx, `
+		SELECT id, order_no, buyer_id, COALESCE(buyer_name, ''), seller_id, COALESCE(seller_enterprise_id, 0),
+		       COALESCE(seller_name, ''), COALESCE(total_quantity, 0), COALESCE(total_amount, 0),
+		       COALESCE(tax_total_amount, 0), COALESCE(currency, 'CNY'), status,
+		       COALESCE(delivery_voucher, ''), COALESCE(receipt_voucher, ''), receipt_at, expires_at, created_at
+		FROM orders
+		WHERE deleted_at IS NULL
+		ORDER BY id DESC
+		LIMIT ? OFFSET ?`, limit, offset)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	items := make([]orderItem, 0)
+	for rows.Next() {
+		var item orderItem
+		var rawStatus sql.NullString
+		if err := rows.Scan(
+			&item.ID,
+			&item.OrderNo,
+			&item.BuyerID,
+			&item.BuyerName,
+			&item.SellerID,
+			&item.SellerEnterpriseID,
+			&item.SellerName,
+			&item.TotalQuantity,
+			&item.TotalAmount,
+			&item.TaxTotalAmount,
+			&item.Currency,
+			&rawStatus,
+			&item.DeliveryVoucher,
+			&item.ReceiptVoucher,
+			&item.ReceiptAt,
+			&item.ExpiresAt,
+			&item.CreatedAt,
+		); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+			return
+		}
+		item.Status = mapOrderStatus(rawStatus.String)
+		items = append(items, item)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "success",
+		"data":    pageResult[orderItem]{List: items, Total: total},
 	})
 }
 

@@ -102,6 +102,26 @@ type productItem struct {
 	UpdatedAt    time.Time  `json:"updatedAt"`
 }
 
+type orderItem struct {
+	ID                 int64      `json:"id"`
+	OrderNo            string     `json:"orderNo"`
+	BuyerID            int64      `json:"buyerId"`
+	BuyerName          string     `json:"buyerName"`
+	SellerID           int64      `json:"sellerId"`
+	SellerEnterpriseID int64      `json:"sellerEnterpriseId"`
+	SellerName         string     `json:"sellerName"`
+	TotalQuantity      float64    `json:"totalQuantity"`
+	TotalAmount        float64    `json:"totalAmount"`
+	TaxTotalAmount     float64    `json:"taxTotalAmount"`
+	Currency           string     `json:"currency"`
+	Status             int        `json:"status"`
+	DeliveryVoucher    string     `json:"deliveryVoucher,omitempty"`
+	ReceiptVoucher     string     `json:"receiptVoucher,omitempty"`
+	ReceiptAt          *time.Time `json:"receiptAt,omitempty"`
+	ExpiresAt          *time.Time `json:"expiresAt,omitempty"`
+	CreatedAt          time.Time  `json:"createdAt"`
+}
+
 type categoryItem struct {
 	ID       int64 `json:"id"`
 	ParentID int64 `json:"parentId"`
@@ -185,6 +205,46 @@ func mapOrderPending(raw string) bool {
 	default:
 		return false
 	}
+}
+
+func mapOrderStatus(raw string) int {
+	switch strings.ToLower(raw) {
+	case "pending":
+		return 1
+	case "pending_contract":
+		return 2
+	case "pending_payment":
+		return 3
+	case "pending_payment_audit":
+		return 4
+	case "pending_pickup":
+		return 5
+	case "shipped":
+		return 6
+	case "cancelled":
+		return 7
+	case "completed":
+		return 8
+	default:
+		return 0
+	}
+}
+
+func parseLegacyAuditRemark(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	payload := map[string]string{}
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+		return raw
+	}
+	if value := payload["audit_reason"]; value != "" {
+		return value
+	}
+	if value := payload["remark"]; value != "" {
+		return value
+	}
+	return ""
 }
 
 func parseVerificationInfo(raw sql.NullString) enterpriseVerificationInfo {

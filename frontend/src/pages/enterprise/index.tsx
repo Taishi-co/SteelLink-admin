@@ -8,6 +8,7 @@ import {
   Input,
   Modal,
   Segmented,
+  Select,
   Skeleton,
   Space,
   Table,
@@ -91,6 +92,13 @@ export default function EnterpriseList() {
       },
     },
     {
+      title: '审核备注',
+      dataIndex: 'auditRemark',
+      key: 'auditRemark',
+      width: 220,
+      render: (value?: string) => value || '-',
+    },
+    {
       title: '创建时间',
       dataIndex: 'createdAt',
       key: 'createdAt',
@@ -137,6 +145,20 @@ export default function EnterpriseList() {
           </Space>
         }
       >
+        <Space className="mb-4" wrap>
+          <Select
+            value={params.status}
+            placeholder="筛选审核状态"
+            allowClear
+            style={{ width: 180 }}
+            onChange={(status) => setParams({ ...params, page: 1, status })}
+            options={[
+              { label: '待审核', value: 0 },
+              { label: '已通过', value: 1 },
+              { label: '已驳回', value: 2 },
+            ]}
+          />
+        </Space>
         <Table
           columns={columns}
           dataSource={rows}

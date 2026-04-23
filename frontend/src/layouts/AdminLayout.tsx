@@ -24,6 +24,7 @@ const menuItems = [
   { key: '/user', icon: <UserOutlined />, label: '用户管理' },
   { key: '/enterprise', icon: <BankOutlined />, label: '企业审核' },
   { key: '/product', icon: <ShoppingOutlined />, label: '商品管理' },
+  { key: '/product/order', icon: <ShoppingOutlined />, label: '订单管理' },
   { key: '/product/category', icon: <ShoppingOutlined />, label: '类目配置' },
 ]
 
@@ -35,6 +36,7 @@ const pageMeta: Record<string, { title: string; description: string }> = {
   '/user': { title: '用户管理', description: '统一查看平台注册用户、联系方式与状态。' },
   '/enterprise': { title: '企业审核', description: '跟踪入驻企业资料、认证状态与联系人信息。' },
   '/product': { title: '商品管理', description: '审核平台商品、库存与销售基础信息。' },
+  '/product/order': { title: '订单管理', description: '查看交易订单、履约状态与凭证情况。' },
   '/product/category': { title: '类目配置', description: '管理商品类目结构，为卖家发布提供标准。' },
 }
 
