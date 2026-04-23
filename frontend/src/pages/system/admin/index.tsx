@@ -4,6 +4,7 @@ import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { adminApi, AdminItem, PageParams } from '../../../services/api'
+import { formatDateTime } from '../../../utils/format'
 
 export default function AdminList() {
   const [params, setParams] = useState<PageParams>({ page: 1, pageSize: 10 })
@@ -17,48 +18,49 @@ export default function AdminList() {
   const { mutate: deleteAdmin } = useMutation({
     mutationFn: adminApi.delete,
     onSuccess: () => {
-      message.success('Deleted successfully')
+      message.success('删除成功')
       queryClient.invalidateQueries({ queryKey: ['admins'] })
     },
   })
 
   const columns: ColumnsType<AdminItem> = [
     { title: 'ID', dataIndex: 'id', key: 'id', width: 80 },
-    { title: 'Username', dataIndex: 'username', key: 'username' },
-    { title: 'Real Name', dataIndex: 'realName', key: 'realName' },
-    { title: 'Email', dataIndex: 'email', key: 'email' },
-    { title: 'Phone', dataIndex: 'phone', key: 'phone' },
+    { title: '账号', dataIndex: 'username', key: 'username' },
+    { title: '姓名', dataIndex: 'realName', key: 'realName' },
+    { title: '邮箱', dataIndex: 'email', key: 'email' },
+    { title: '手机号', dataIndex: 'phone', key: 'phone' },
     {
-      title: 'Status',
+      title: '状态',
       dataIndex: 'status',
       key: 'status',
       render: (status: number) => (
         <Tag color={status === 1 ? 'green' : 'red'}>
-          {status === 1 ? 'Enabled' : 'Disabled'}
+          {status === 1 ? '启用' : '停用'}
         </Tag>
       ),
     },
     {
-      title: 'Created At',
+      title: '创建时间',
       dataIndex: 'createdAt',
       key: 'createdAt',
       width: 180,
+      render: (value: string) => formatDateTime(value),
     },
     {
-      title: 'Actions',
+      title: '操作',
       key: 'actions',
       width: 150,
       render: (_, record) => (
         <Space>
           <Button type="link" icon={<EditOutlined />} size="small">
-            Edit
+            编辑
           </Button>
           <Popconfirm
-            title="Are you sure to delete this admin?"
+            title="确认删除该管理员吗？"
             onConfirm={() => deleteAdmin(record.id)}
           >
             <Button type="link" danger icon={<DeleteOutlined />} size="small">
-              Delete
+              删除
             </Button>
           </Popconfirm>
         </Space>
@@ -68,10 +70,10 @@ export default function AdminList() {
 
   return (
     <Card
-      title="Admin Management"
+      title="管理员管理"
       extra={
         <Button type="primary" icon={<PlusOutlined />}>
-          Add Admin
+          新增管理员
         </Button>
       }
     >
