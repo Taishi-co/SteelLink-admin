@@ -47,6 +47,7 @@ const menuItems = [
     label: '商品中心',
     children: [
       { key: '/product', icon: <AppstoreOutlined />, label: '商品管理' },
+      { key: '/product/order', icon: <ShoppingOutlined />, label: '订单管理' },
       { key: '/product/category', icon: <AppstoreOutlined />, label: '类目配置' },
     ],
   },
@@ -60,6 +61,7 @@ const pageMeta: Record<string, { title: string; description: string }> = {
   '/user': { title: '用户管理', description: '平台注册用户管理' },
   '/enterprise': { title: '企业审核', description: '入驻企业资质审核' },
   '/product': { title: '商品管理', description: '商品信息与审核管理' },
+  '/product/order': { title: '订单管理', description: '交易订单与履约管理' },
   '/product/category': { title: '类目配置', description: '商品类目结构管理' },
 }
 

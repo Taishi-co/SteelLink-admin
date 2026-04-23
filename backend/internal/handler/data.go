@@ -100,10 +100,24 @@ type productItem struct {
 	Name         string     `json:"name"`
 	CategoryID   *int64     `json:"categoryId,omitempty"`
 	EnterpriseID int64      `json:"enterpriseId"`
+	Category     string     `json:"category,omitempty"`
+	SubCategory  string     `json:"subCategory,omitempty"`
+	SteelMill    string     `json:"steelMill,omitempty"`
 	Spec         string     `json:"spec,omitempty"`
+	Material     string     `json:"material,omitempty"`
+	WarehouseName string    `json:"warehouseName,omitempty"`
+	WarehouseCode string    `json:"warehouseCode,omitempty"`
+	Province     string     `json:"province,omitempty"`
+	City         string     `json:"city,omitempty"`
+	District     string     `json:"district,omitempty"`
+	Address      string     `json:"address,omitempty"`
+	BundleNo     string     `json:"bundleNo,omitempty"`
 	Unit         string     `json:"unit,omitempty"`
 	Price        float64    `json:"price"`
-	Stock        int64      `json:"stock"`
+	Stock        float64    `json:"stock"`
+	MinOrderQty  float64    `json:"minOrderQty"`
+	DeliveryDays int        `json:"deliveryDays"`
+	QuoteValidity int       `json:"quoteValidity"`
 	Description  string     `json:"description,omitempty"`
 	Images       []string   `json:"images,omitempty"`
 	Status       int        `json:"status"`
@@ -111,6 +125,26 @@ type productItem struct {
 	AuditedAt    *time.Time `json:"auditedAt,omitempty"`
 	CreatedAt    time.Time  `json:"createdAt"`
 	UpdatedAt    time.Time  `json:"updatedAt"`
+}
+
+type orderItem struct {
+	ID                 int64      `json:"id"`
+	OrderNo            string     `json:"orderNo"`
+	BuyerID            int64      `json:"buyerId"`
+	BuyerName          string     `json:"buyerName"`
+	SellerID           int64      `json:"sellerId"`
+	SellerEnterpriseID int64      `json:"sellerEnterpriseId"`
+	SellerName         string     `json:"sellerName"`
+	TotalQuantity      float64    `json:"totalQuantity"`
+	TotalAmount        float64    `json:"totalAmount"`
+	TaxTotalAmount     float64    `json:"taxTotalAmount"`
+	Currency           string     `json:"currency"`
+	Status             int        `json:"status"`
+	DeliveryVoucher    string     `json:"deliveryVoucher,omitempty"`
+	ReceiptVoucher     string     `json:"receiptVoucher,omitempty"`
+	ReceiptAt          *time.Time `json:"receiptAt,omitempty"`
+	ExpiresAt          *time.Time `json:"expiresAt,omitempty"`
+	CreatedAt          time.Time  `json:"createdAt"`
 }
 
 type categoryItem struct {
@@ -153,6 +187,20 @@ type enterpriseVerificationInfo struct {
 	ContactName    string `json:"contact_name"`
 	ContactPhone   string `json:"contact_phone"`
 	Address        string `json:"address"`
+}
+
+type productSpecInfo struct {
+	Material string `json:"material"`
+	Spec     string `json:"spec"`
+}
+
+type warehouseInfo struct {
+	WarehouseName string `json:"warehouse_name"`
+	WarehouseCode string `json:"warehouse_code"`
+	Province      string `json:"province"`
+	City          string `json:"city"`
+	District      string `json:"district"`
+	Address       string `json:"address"`
 }
 
 func parsePageParams(pageStr, pageSizeStr string) (limit, offset int) {
@@ -204,10 +252,14 @@ func columnExists(ctx context.Context, db *sql.DB, table, column string) bool {
 
 func mapProductStatus(raw string) int {
 	switch strings.ToLower(raw) {
-	case "approved":
+	case "2", "approved":
 		return 1
-	case "rejected", "offline":
+	case "4", "rejected":
 		return 2
+	case "3", "offline":
+		return 2
+	case "1", "0", "pending_review", "draft":
+		return 0
 	default:
 		return 0
 	}
@@ -220,6 +272,46 @@ func mapOrderPending(raw string) bool {
 	default:
 		return false
 	}
+}
+
+func mapOrderStatus(raw string) int {
+	switch strings.ToLower(raw) {
+	case "pending":
+		return 1
+	case "pending_contract":
+		return 2
+	case "pending_payment":
+		return 3
+	case "pending_payment_audit":
+		return 4
+	case "pending_pickup":
+		return 5
+	case "shipped":
+		return 6
+	case "cancelled":
+		return 7
+	case "completed":
+		return 8
+	default:
+		return 0
+	}
+}
+
+func parseLegacyAuditRemark(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	payload := map[string]string{}
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+		return raw
+	}
+	if value := payload["audit_reason"]; value != "" {
+		return value
+	}
+	if value := payload["remark"]; value != "" {
+		return value
+	}
+	return ""
 }
 
 func parseVerificationInfo(raw sql.NullString) enterpriseVerificationInfo {
@@ -424,4 +516,22 @@ func AutoMigrate(db *sql.DB) {
 		db.ExecContext(ctx, `INSERT INTO admin_role_menus (role_id, menu_id)
 			SELECT 1, id FROM admin_menus WHERE deleted_at IS NULL`)
 	}
+}
+
+func parseProductSpec(raw sql.NullString) productSpecInfo {
+	if !raw.Valid || raw.String == "" {
+		return productSpecInfo{}
+	}
+	var spec productSpecInfo
+	_ = json.Unmarshal([]byte(raw.String), &spec)
+	return spec
+}
+
+func parseWarehouseInfo(raw sql.NullString) warehouseInfo {
+	if !raw.Valid || raw.String == "" {
+		return warehouseInfo{}
+	}
+	var info warehouseInfo
+	_ = json.Unmarshal([]byte(raw.String), &info)
+	return info
 }
