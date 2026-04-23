@@ -211,54 +211,182 @@ func ListAdmins(c *gin.Context) {
 		return
 	}
 
+	items := listLocalAdmins()
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
 		"message": "success",
-		"data": pageResult[adminItem]{
-			List: []adminItem{{
-				ID:        1,
-				Username:  defaultAdminUsername(),
-				RealName:  defaultAdminRealName(),
-				Status:    1,
-				RoleID:    func() *int64 { v := int64(1); return &v }(),
-				CreatedAt: time.Now(),
-			}},
-			Total: 1,
-		},
+		"data":    pageResult[adminItem]{List: items, Total: len(items)},
 	})
 }
 
 // GetAdmin returns a single admin
 func GetAdmin(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"code":    0,
-		"message": "success",
-		"data":    nil,
-	})
+	db := database.GetDB()
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	if db != nil && tableExists(ctx, db, "admin_users") {
+		var item adminItem
+		row := db.QueryRowContext(ctx, `
+			SELECT id, username, COALESCE(real_name, ''), COALESCE(email, ''), COALESCE(phone, ''), status, role_id, created_at
+			FROM admin_users
+			WHERE deleted_at IS NULL AND id = ?
+			LIMIT 1`, c.Param("id"))
+		if err := row.Scan(&item.ID, &item.Username, &item.RealName, &item.Email, &item.Phone, &item.Status, &item.RoleID, &item.CreatedAt); err != nil {
+			if err == sql.ErrNoRows {
+				c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "admin not found"})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": item})
+		return
+	}
+
+	var id int64
+	fmt.Sscanf(c.Param("id"), "%d", &id)
+	item, ok := getLocalAdminByID(id)
+	if !ok {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "admin not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": item})
 }
 
 // CreateAdmin creates a new admin
 func CreateAdmin(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"code":    0,
-		"message": "success",
-	})
+	var req adminUpsertRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid admin payload"})
+		return
+	}
+	if req.Password == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "password is required"})
+		return
+	}
+
+	db := database.GetDB()
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	if db != nil && tableExists(ctx, db, "admin_users") {
+		now := time.Now()
+		result, err := db.ExecContext(ctx, `
+			INSERT INTO admin_users (username, password, real_name, email, phone, status, role_id, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			req.Username,
+			req.Password,
+			req.RealName,
+			req.Email,
+			req.Phone,
+			req.Status,
+			req.RoleID,
+			now,
+			now,
+		)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+			return
+		}
+		id, _ := result.LastInsertId()
+		c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": adminItem{
+			ID:        id,
+			Username:  req.Username,
+			RealName:  req.RealName,
+			Email:     req.Email,
+			Phone:     req.Phone,
+			Status:    req.Status,
+			RoleID:    req.RoleID,
+			CreatedAt: now,
+		}})
+		return
+	}
+
+	item := createLocalAdmin(req)
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": item})
 }
 
 // UpdateAdmin updates an admin
 func UpdateAdmin(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"code":    0,
-		"message": "success",
-	})
+	var req adminUpsertRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid admin payload"})
+		return
+	}
+
+	db := database.GetDB()
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	if db != nil && tableExists(ctx, db, "admin_users") {
+		result, err := db.ExecContext(ctx, `
+			UPDATE admin_users
+			SET username = ?, real_name = ?, email = ?, phone = ?, status = ?, role_id = ?, updated_at = ?
+			WHERE id = ? AND deleted_at IS NULL`,
+			req.Username,
+			req.RealName,
+			req.Email,
+			req.Phone,
+			req.Status,
+			req.RoleID,
+			time.Now(),
+			c.Param("id"),
+		)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+			return
+		}
+		affected, _ := result.RowsAffected()
+		if affected == 0 {
+			c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "admin not found"})
+			return
+		}
+		GetAdmin(c)
+		return
+	}
+
+	var id int64
+	fmt.Sscanf(c.Param("id"), "%d", &id)
+	item, ok := updateLocalAdmin(id, req)
+	if !ok {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "admin not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": item})
 }
 
 // DeleteAdmin deletes an admin
 func DeleteAdmin(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"code":    0,
-		"message": "success",
-	})
+	db := database.GetDB()
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	if db != nil && tableExists(ctx, db, "admin_users") {
+		result, err := db.ExecContext(ctx, `UPDATE admin_users SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL`, time.Now(), c.Param("id"))
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+			return
+		}
+		affected, _ := result.RowsAffected()
+		if affected == 0 {
+			c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "admin not found"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": true})
+		return
+	}
+
+	var id int64
+	fmt.Sscanf(c.Param("id"), "%d", &id)
+	if !deleteLocalAdmin(id) {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "default admin cannot be deleted"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": true})
 }
 
 // ListRoles returns list of roles
@@ -340,35 +468,171 @@ func ListRoles(c *gin.Context) {
 
 // GetRole returns a single role
 func GetRole(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"code":    0,
-		"message": "success",
-		"data":    nil,
-	})
+	db := database.GetDB()
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	if db == nil || !tableExists(ctx, db, "admin_roles") {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "role not found"})
+		return
+	}
+
+	var item roleItem
+	row := db.QueryRowContext(ctx, `
+		SELECT id, name, code, COALESCE(description, ''), status, sort, created_at
+		FROM admin_roles WHERE deleted_at IS NULL AND id = ? LIMIT 1`, c.Param("id"))
+	if err := row.Scan(&item.ID, &item.Name, &item.Code, &item.Description, &item.Status, &item.Sort, &item.CreatedAt); err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "role not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": item})
 }
 
 // CreateRole creates a new role
 func CreateRole(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"code":    0,
-		"message": "success",
-	})
+	var req roleUpsertRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid role payload"})
+		return
+	}
+
+	db := database.GetDB()
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	if db == nil || !tableExists(ctx, db, "admin_roles") {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"code": 503, "message": "database unavailable"})
+		return
+	}
+
+	result, err := db.ExecContext(ctx, `
+		INSERT INTO admin_roles (name, code, description, status, sort) VALUES (?, ?, ?, ?, ?)`,
+		req.Name, req.Code, req.Description, req.Status, req.Sort)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+	id, _ := result.LastInsertId()
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": roleItem{
+		ID: id, Name: req.Name, Code: req.Code, Description: req.Description,
+		Status: req.Status, Sort: req.Sort, CreatedAt: time.Now(),
+	}})
 }
 
 // UpdateRole updates a role
 func UpdateRole(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"code":    0,
-		"message": "success",
-	})
+	var req roleUpsertRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid role payload"})
+		return
+	}
+
+	db := database.GetDB()
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	if db == nil || !tableExists(ctx, db, "admin_roles") {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"code": 503, "message": "database unavailable"})
+		return
+	}
+
+	result, err := db.ExecContext(ctx, `
+		UPDATE admin_roles SET name=?, code=?, description=?, status=?, sort=?, updated_at=?
+		WHERE id=? AND deleted_at IS NULL`,
+		req.Name, req.Code, req.Description, req.Status, req.Sort, time.Now(), c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+	affected, _ := result.RowsAffected()
+	if affected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "role not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success"})
 }
 
 // DeleteRole deletes a role
 func DeleteRole(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"code":    0,
-		"message": "success",
-	})
+	db := database.GetDB()
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	if db == nil || !tableExists(ctx, db, "admin_roles") {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"code": 503, "message": "database unavailable"})
+		return
+	}
+
+	result, err := db.ExecContext(ctx, `UPDATE admin_roles SET deleted_at=? WHERE id=? AND deleted_at IS NULL`, time.Now(), c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+	affected, _ := result.RowsAffected()
+	if affected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "role not found"})
+		return
+	}
+	db.ExecContext(ctx, `DELETE FROM admin_role_menus WHERE role_id = ?`, c.Param("id"))
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": true})
+}
+
+// GetRoleMenus returns menu IDs assigned to a role
+func GetRoleMenus(c *gin.Context) {
+	db := database.GetDB()
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	if db == nil || !tableExists(ctx, db, "admin_role_menus") {
+		c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": []int64{}})
+		return
+	}
+
+	rows, err := db.QueryContext(ctx, `SELECT menu_id FROM admin_role_menus WHERE role_id = ?`, c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	ids := make([]int64, 0)
+	for rows.Next() {
+		var id int64
+		rows.Scan(&id)
+		ids = append(ids, id)
+	}
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": ids})
+}
+
+// UpdateRoleMenus sets menu IDs for a role
+func UpdateRoleMenus(c *gin.Context) {
+	var req roleMenusRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid payload"})
+		return
+	}
+
+	db := database.GetDB()
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	if db == nil || !tableExists(ctx, db, "admin_role_menus") {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"code": 503, "message": "database unavailable"})
+		return
+	}
+
+	roleID := c.Param("id")
+	db.ExecContext(ctx, `DELETE FROM admin_role_menus WHERE role_id = ?`, roleID)
+
+	for _, menuID := range req.MenuIDs {
+		db.ExecContext(ctx, `INSERT INTO admin_role_menus (role_id, menu_id) VALUES (?, ?)`, roleID, menuID)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success"})
 }
 
 // ListMenus returns list of menus
@@ -420,35 +684,118 @@ func ListMenus(c *gin.Context) {
 
 // GetMenu returns a single menu
 func GetMenu(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"code":    0,
-		"message": "success",
-		"data":    nil,
-	})
+	db := database.GetDB()
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	if db == nil || !tableExists(ctx, db, "admin_menus") {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "menu not found"})
+		return
+	}
+
+	var item menuItem
+	row := db.QueryRowContext(ctx, `
+		SELECT id, parent_id, name, COALESCE(path,''), COALESCE(component,''), COALESCE(icon,''), type, COALESCE(permission,''), status, sort
+		FROM admin_menus WHERE deleted_at IS NULL AND id = ? LIMIT 1`, c.Param("id"))
+	if err := row.Scan(&item.ID, &item.ParentID, &item.Name, &item.Path, &item.Component, &item.Icon, &item.Type, &item.Permission, &item.Status, &item.Sort); err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "menu not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": item})
 }
 
 // CreateMenu creates a new menu
 func CreateMenu(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"code":    0,
-		"message": "success",
-	})
+	var req menuUpsertRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid menu payload"})
+		return
+	}
+
+	db := database.GetDB()
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	if db == nil || !tableExists(ctx, db, "admin_menus") {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"code": 503, "message": "database unavailable"})
+		return
+	}
+
+	result, err := db.ExecContext(ctx, `
+		INSERT INTO admin_menus (parent_id, name, path, component, icon, type, permission, status, sort)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		req.ParentID, req.Name, req.Path, req.Component, req.Icon, req.Type, req.Permission, req.Status, req.Sort)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+	id, _ := result.LastInsertId()
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": menuItem{
+		ID: id, ParentID: req.ParentID, Name: req.Name, Path: req.Path,
+		Component: req.Component, Icon: req.Icon, Type: req.Type,
+		Permission: req.Permission, Status: req.Status, Sort: req.Sort,
+	}})
 }
 
 // UpdateMenu updates a menu
 func UpdateMenu(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"code":    0,
-		"message": "success",
-	})
+	var req menuUpsertRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid menu payload"})
+		return
+	}
+
+	db := database.GetDB()
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	if db == nil || !tableExists(ctx, db, "admin_menus") {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"code": 503, "message": "database unavailable"})
+		return
+	}
+
+	result, err := db.ExecContext(ctx, `
+		UPDATE admin_menus SET parent_id=?, name=?, path=?, component=?, icon=?, type=?, permission=?, status=?, sort=?, updated_at=?
+		WHERE id=? AND deleted_at IS NULL`,
+		req.ParentID, req.Name, req.Path, req.Component, req.Icon, req.Type, req.Permission, req.Status, req.Sort, time.Now(), c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+	affected, _ := result.RowsAffected()
+	if affected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "menu not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success"})
 }
 
 // DeleteMenu deletes a menu
 func DeleteMenu(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"code":    0,
-		"message": "success",
-	})
+	db := database.GetDB()
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	if db == nil || !tableExists(ctx, db, "admin_menus") {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"code": 503, "message": "database unavailable"})
+		return
+	}
+
+	result, err := db.ExecContext(ctx, `UPDATE admin_menus SET deleted_at=? WHERE id=? AND deleted_at IS NULL`, time.Now(), c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+	affected, _ := result.RowsAffected()
+	if affected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "menu not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": true})
 }
 
 // ListUsers returns list of users
@@ -719,7 +1066,7 @@ func ListProducts(c *gin.Context) {
 	}
 
 	rows, err := db.QueryContext(ctx, `
-		SELECT id, name, enterprise_id, COALESCE(specs, ''), COALESCE(unit, ''), price, stock, COALESCE(description, ''), image_urls, status, created_at
+		SELECT id, name, enterprise_id, COALESCE(specs, ''), COALESCE(unit, ''), COALESCE(price, 0), COALESCE(stock, 0), COALESCE(description, ''), image_urls, status, created_at
 		FROM products
 		WHERE deleted_at IS NULL
 		ORDER BY id DESC
@@ -770,7 +1117,7 @@ func GetProduct(c *gin.Context) {
 	var updatedAt sql.NullTime
 
 	row := db.QueryRowContext(ctx, `
-		SELECT id, name, enterprise_id, COALESCE(specs, ''), COALESCE(unit, ''), price, stock,
+		SELECT id, name, enterprise_id, COALESCE(specs, ''), COALESCE(unit, ''), COALESCE(price, 0), COALESCE(stock, 0),
 		       COALESCE(description, ''), image_urls, status, COALESCE(audit_remark, ''), approved_at, created_at, updated_at
 		FROM products
 		WHERE deleted_at IS NULL AND id = ?

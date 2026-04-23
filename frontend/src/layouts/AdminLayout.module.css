@@ -31,18 +31,19 @@
 }
 
 .header {
-  padding: 0 24px;
-  height: 72px;
+  padding: 0 20px;
+  height: 56px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  box-shadow: 0 10px 24px rgba(13, 30, 55, 0.06);
+  box-shadow: 0 1px 4px rgba(13, 30, 55, 0.08);
+  overflow: hidden;
 }
 
 .trigger {
-  font-size: 18px;
-  line-height: 72px;
-  padding: 0 12px;
+  font-size: 16px;
+  line-height: 56px;
+  padding: 0 8px;
   cursor: pointer;
   transition: color 0.3s;
 }
@@ -51,50 +52,73 @@
   color: #1890ff;
 }
 
-.userInfo {
+.headerLeft {
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
 }
 
 .headerMeta {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
 }
 
 .pageTitle {
-  font-size: 24px;
-  font-weight: 700;
+  font-size: 16px;
+  font-weight: 600;
   color: #14213d;
+  white-space: nowrap;
 }
 
 .pageDesc {
-  font-size: 13px;
-  color: #6b7b93;
+  font-size: 12px;
+  color: #8c95a6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 240px;
 }
 
 .userAvatar {
   display: flex;
   align-items: center;
   cursor: pointer;
-  gap: 10px;
-  padding: 8px 12px;
-  border-radius: 14px;
-  background: #f1f5fb;
+  gap: 8px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: #f5f7fa;
+  transition: background 0.2s;
+}
+
+.userAvatar:hover {
+  background: #e8ecf1;
 }
 
 .userName {
   color: #1f3458;
-  font-weight: 600;
+  font-weight: 500;
+  font-size: 13px;
+  white-space: nowrap;
 }
 
 .content {
-  margin: 20px 24px 24px;
-  padding: 24px;
+  margin: 16px 20px 20px;
+  padding: 20px;
   min-height: 280px;
   overflow: auto;
-  box-shadow: 0 22px 54px rgba(18, 40, 70, 0.08);
+  box-shadow: 0 2px 8px rgba(18, 40, 70, 0.06);
 }
 
 .contentShell {
@@ -104,19 +128,20 @@
 .statusPill {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 7px 12px;
+  gap: 6px;
+  padding: 4px 10px;
   border-radius: 999px;
   background: #eef6ff;
   color: #1f5eff;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
 }
 
 .statusDot {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: #2f6df3;
-  box-shadow: 0 0 0 6px rgba(47, 109, 243, 0.14);
+  box-shadow: 0 0 0 3px rgba(47, 109, 243, 0.14);
 }
