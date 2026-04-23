@@ -12,30 +12,30 @@ export default function CategoryList() {
 
   const columns: ColumnsType<CategoryItem> = [
     { title: 'ID', dataIndex: 'id', key: 'id', width: 80 },
-    { title: 'Name', dataIndex: 'name', key: 'name' },
-    { title: 'Code', dataIndex: 'code', key: 'code' },
+    { title: '类目名称', dataIndex: 'name', key: 'name' },
+    { title: '编码', dataIndex: 'code', key: 'code' },
     {
-      title: 'Status',
+      title: '状态',
       dataIndex: 'status',
       key: 'status',
       render: (status: number) => (
         <Tag color={status === 1 ? 'green' : 'red'}>
-          {status === 1 ? 'Enabled' : 'Disabled'}
+          {status === 1 ? '启用' : '停用'}
         </Tag>
       ),
     },
-    { title: 'Sort', dataIndex: 'sort', key: 'sort', width: 80 },
+    { title: '排序', dataIndex: 'sort', key: 'sort', width: 80 },
     {
-      title: 'Actions',
+      title: '操作',
       key: 'actions',
       width: 150,
       render: () => (
         <Space>
           <Button type="link" icon={<EditOutlined />} size="small">
-            Edit
+            编辑
           </Button>
           <Button type="link" danger icon={<DeleteOutlined />} size="small">
-            Delete
+            删除
           </Button>
         </Space>
       ),
@@ -44,10 +44,10 @@ export default function CategoryList() {
 
   return (
     <Card
-      title="Category Management"
+      title="类目配置"
       extra={
         <Button type="primary" icon={<PlusOutlined />}>
-          Add Category
+          新增类目
         </Button>
       }
     >

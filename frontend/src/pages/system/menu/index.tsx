@@ -12,41 +12,41 @@ export default function MenuList() {
 
   const columns: ColumnsType<MenuItem> = [
     { title: 'ID', dataIndex: 'id', key: 'id', width: 80 },
-    { title: 'Name', dataIndex: 'name', key: 'name' },
-    { title: 'Path', dataIndex: 'path', key: 'path' },
-    { title: 'Icon', dataIndex: 'icon', key: 'icon' },
+    { title: '菜单名称', dataIndex: 'name', key: 'name' },
+    { title: '路径', dataIndex: 'path', key: 'path' },
+    { title: '图标', dataIndex: 'icon', key: 'icon' },
     {
-      title: 'Type',
+      title: '类型',
       dataIndex: 'type',
       key: 'type',
       render: (type: number) => (
         <Tag color={type === 1 ? 'blue' : 'orange'}>
-          {type === 1 ? 'Menu' : 'Button'}
+          {type === 1 ? '菜单' : '按钮'}
         </Tag>
       ),
     },
     {
-      title: 'Status',
+      title: '状态',
       dataIndex: 'status',
       key: 'status',
       render: (status: number) => (
         <Tag color={status === 1 ? 'green' : 'red'}>
-          {status === 1 ? 'Visible' : 'Hidden'}
+          {status === 1 ? '显示' : '隐藏'}
         </Tag>
       ),
     },
-    { title: 'Sort', dataIndex: 'sort', key: 'sort', width: 80 },
+    { title: '排序', dataIndex: 'sort', key: 'sort', width: 80 },
     {
-      title: 'Actions',
+      title: '操作',
       key: 'actions',
       width: 150,
       render: () => (
         <Space>
           <Button type="link" icon={<EditOutlined />} size="small">
-            Edit
+            编辑
           </Button>
           <Button type="link" danger icon={<DeleteOutlined />} size="small">
-            Delete
+            删除
           </Button>
         </Space>
       ),
@@ -55,10 +55,10 @@ export default function MenuList() {
 
   return (
     <Card
-      title="Menu Management"
+      title="菜单配置"
       extra={
         <Button type="primary" icon={<PlusOutlined />}>
-          Add Menu
+          新增菜单
         </Button>
       }
     >

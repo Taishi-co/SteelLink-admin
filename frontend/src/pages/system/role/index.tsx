@@ -4,6 +4,7 @@ import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { roleApi, RoleItem, PageParams } from '../../../services/api'
+import { formatDateTime } from '../../../utils/format'
 
 export default function RoleList() {
   const [params, setParams] = useState<PageParams>({ page: 1, pageSize: 10 })
@@ -17,48 +18,49 @@ export default function RoleList() {
   const { mutate: deleteRole } = useMutation({
     mutationFn: roleApi.delete,
     onSuccess: () => {
-      message.success('Deleted successfully')
+      message.success('删除成功')
       queryClient.invalidateQueries({ queryKey: ['roles'] })
     },
   })
 
   const columns: ColumnsType<RoleItem> = [
     { title: 'ID', dataIndex: 'id', key: 'id', width: 80 },
-    { title: 'Name', dataIndex: 'name', key: 'name' },
-    { title: 'Code', dataIndex: 'code', key: 'code' },
-    { title: 'Description', dataIndex: 'description', key: 'description' },
+    { title: '角色名称', dataIndex: 'name', key: 'name' },
+    { title: '角色编码', dataIndex: 'code', key: 'code' },
+    { title: '说明', dataIndex: 'description', key: 'description' },
     {
-      title: 'Status',
+      title: '状态',
       dataIndex: 'status',
       key: 'status',
       render: (status: number) => (
         <Tag color={status === 1 ? 'green' : 'red'}>
-          {status === 1 ? 'Enabled' : 'Disabled'}
+          {status === 1 ? '启用' : '停用'}
         </Tag>
       ),
     },
-    { title: 'Sort', dataIndex: 'sort', key: 'sort', width: 80 },
+    { title: '排序', dataIndex: 'sort', key: 'sort', width: 80 },
     {
-      title: 'Created At',
+      title: '创建时间',
       dataIndex: 'createdAt',
       key: 'createdAt',
       width: 180,
+      render: (value: string) => formatDateTime(value),
     },
     {
-      title: 'Actions',
+      title: '操作',
       key: 'actions',
       width: 150,
       render: (_, record) => (
         <Space>
           <Button type="link" icon={<EditOutlined />} size="small">
-            Edit
+            编辑
           </Button>
           <Popconfirm
-            title="Are you sure to delete this role?"
+            title="确认删除该角色吗？"
             onConfirm={() => deleteRole(record.id)}
           >
             <Button type="link" danger icon={<DeleteOutlined />} size="small">
-              Delete
+              删除
             </Button>
           </Popconfirm>
         </Space>
@@ -68,10 +70,10 @@ export default function RoleList() {
 
   return (
     <Card
-      title="Role Management"
+      title="角色权限"
       extra={
         <Button type="primary" icon={<PlusOutlined />}>
-          Add Role
+          新增角色
         </Button>
       }
     >

@@ -1,13 +1,17 @@
 package handler
 
 import (
-	"encoding/json"
+	"context"
+	"database/sql"
+	"fmt"
 	"net/http"
 	"os"
-	"github.com/Taishi-co/SteelLink-admin/backend/internal/auth"
 	"strconv"
+	"strings"
 	"time"
-	"github.com/Taishi-co/SteelLink-admin/backend/internal/store"
+
+	"github.com/Taishi-co/SteelLink-admin/backend/internal/auth"
+	"github.com/Taishi-co/SteelLink-admin/backend/internal/database"
 	"github.com/gin-gonic/gin"
 )
 
@@ -39,9 +43,62 @@ func defaultAdminRealName() string {
 
 // HealthCheck returns server health status
 func HealthCheck(c *gin.Context) {
+	dbStatus := "ok"
+	if err := database.Ping(); err != nil {
+		dbStatus = err.Error()
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"status":   "degraded",
+			"message":  "SteelLink Admin API database check failed",
+			"database": dbStatus,
+		})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"status":  "ok",
-		"message": "SteelLink Admin API is running",
+		"status":   "ok",
+		"message":  "SteelLink Admin API is running",
+		"database": dbStatus,
+	})
+}
+
+func GetDashboardStats(c *gin.Context) {
+	db := database.GetDB()
+	if db == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"code": 503, "message": "database unavailable"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	stats := dashboardStats{}
+	var err error
+
+	stats.TotalUsers, err = queryCount(ctx, db, `SELECT COUNT(*) FROM users WHERE deleted_at IS NULL`)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+	stats.TotalEnterprises, err = queryCount(ctx, db, `SELECT COUNT(*) FROM enterprises WHERE deleted_at IS NULL`)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+	stats.TotalProducts, err = queryCount(ctx, db, `SELECT COUNT(*) FROM products WHERE deleted_at IS NULL`)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+
+	pendingEnterprises, _ := queryCount(ctx, db, `SELECT COUNT(*) FROM enterprises WHERE deleted_at IS NULL AND status = 0`)
+	pendingProducts, _ := queryCount(ctx, db, `SELECT COUNT(*) FROM products WHERE deleted_at IS NULL AND status IN ('draft', 'pending_review', '0')`)
+	pendingOrders, _ := queryCount(ctx, db, `SELECT COUNT(*) FROM orders WHERE deleted_at IS NULL AND status IN ('pending_contract', 'pending_payment', 'pending_payment_audit', 'pending_pickup')`)
+	stats.PendingAudits = pendingEnterprises + pendingProducts + pendingOrders
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "success",
+		"data":    stats,
 	})
 }
 
@@ -117,12 +174,57 @@ func GetAdminInfo(c *gin.Context) {
 
 // ListAdmins returns list of admins
 func ListAdmins(c *gin.Context) {
+	db := database.GetDB()
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	if db != nil && tableExists(ctx, db, "admin_users") {
+		limit, offset := parsePageParams(c.Query("page"), c.Query("pageSize"))
+		total, err := queryCount(ctx, db, `SELECT COUNT(*) FROM admin_users WHERE deleted_at IS NULL`)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+			return
+		}
+
+		rows, err := db.QueryContext(ctx, `
+			SELECT id, username, COALESCE(real_name, ''), COALESCE(email, ''), COALESCE(phone, ''), status, role_id, created_at
+			FROM admin_users
+			WHERE deleted_at IS NULL
+			ORDER BY id DESC
+			LIMIT ? OFFSET ?`, limit, offset)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+			return
+		}
+		defer rows.Close()
+
+		items := make([]adminItem, 0)
+		for rows.Next() {
+			var item adminItem
+			if err := rows.Scan(&item.ID, &item.Username, &item.RealName, &item.Email, &item.Phone, &item.Status, &item.RoleID, &item.CreatedAt); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+				return
+			}
+			items = append(items, item)
+		}
+
+		c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": pageResult[adminItem]{List: items, Total: total}})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
 		"message": "success",
-		"data": gin.H{
-			"list":  []interface{}{},
-			"total": 0,
+		"data": pageResult[adminItem]{
+			List: []adminItem{{
+				ID:        1,
+				Username:  defaultAdminUsername(),
+				RealName:  defaultAdminRealName(),
+				Status:    1,
+				RoleID:    func() *int64 { v := int64(1); return &v }(),
+				CreatedAt: time.Now(),
+			}},
+			Total: 1,
 		},
 	})
 }
@@ -162,13 +264,78 @@ func DeleteAdmin(c *gin.Context) {
 
 // ListRoles returns list of roles
 func ListRoles(c *gin.Context) {
+	db := database.GetDB()
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	limit, offset := parsePageParams(c.Query("page"), c.Query("pageSize"))
+
+	if db != nil && tableExists(ctx, db, "admin_roles") {
+		total, err := queryCount(ctx, db, `SELECT COUNT(*) FROM admin_roles WHERE deleted_at IS NULL`)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+			return
+		}
+		rows, err := db.QueryContext(ctx, `
+			SELECT id, name, code, COALESCE(description, ''), status, sort, created_at
+			FROM admin_roles
+			WHERE deleted_at IS NULL
+			ORDER BY sort ASC, id ASC
+			LIMIT ? OFFSET ?`, limit, offset)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+			return
+		}
+		defer rows.Close()
+		items := make([]roleItem, 0)
+		for rows.Next() {
+			var item roleItem
+			if err := rows.Scan(&item.ID, &item.Name, &item.Code, &item.Description, &item.Status, &item.Sort, &item.CreatedAt); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+				return
+			}
+			items = append(items, item)
+		}
+		c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": pageResult[roleItem]{List: items, Total: total}})
+		return
+	}
+
+	if db != nil && tableExists(ctx, db, "roles") {
+		total, err := queryCount(ctx, db, `SELECT COUNT(*) FROM roles WHERE deleted_at IS NULL`)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+			return
+		}
+		rows, err := db.QueryContext(ctx, `
+			SELECT id, name, code, COALESCE(description, ''), created_at
+			FROM roles
+			WHERE deleted_at IS NULL
+			ORDER BY id ASC
+			LIMIT ? OFFSET ?`, limit, offset)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+			return
+		}
+		defer rows.Close()
+		items := make([]roleItem, 0)
+		for rows.Next() {
+			var item roleItem
+			if err := rows.Scan(&item.ID, &item.Name, &item.Code, &item.Description, &item.CreatedAt); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+				return
+			}
+			item.Status = 1
+			item.Sort = int(item.ID)
+			items = append(items, item)
+		}
+		c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": pageResult[roleItem]{List: items, Total: total}})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
 		"message": "success",
-		"data": gin.H{
-			"list":  []interface{}{},
-			"total": 0,
-		},
+		"data":    pageResult[roleItem]{List: []roleItem{}, Total: 0},
 	})
 }
 
@@ -207,13 +374,48 @@ func DeleteRole(c *gin.Context) {
 
 // ListMenus returns list of menus
 func ListMenus(c *gin.Context) {
+	db := database.GetDB()
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	if db != nil && tableExists(ctx, db, "admin_menus") {
+		rows, err := db.QueryContext(ctx, `
+			SELECT id, parent_id, name, COALESCE(path, ''), COALESCE(component, ''), COALESCE(icon, ''), type, COALESCE(permission, ''), status, sort
+			FROM admin_menus
+			WHERE deleted_at IS NULL
+			ORDER BY sort ASC, id ASC`)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+			return
+		}
+		defer rows.Close()
+		items := make([]menuItem, 0)
+		for rows.Next() {
+			var item menuItem
+			if err := rows.Scan(&item.ID, &item.ParentID, &item.Name, &item.Path, &item.Component, &item.Icon, &item.Type, &item.Permission, &item.Status, &item.Sort); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+				return
+			}
+			items = append(items, item)
+		}
+		c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": pageResult[menuItem]{List: items, Total: len(items)}})
+		return
+	}
+
+	menus := []menuItem{
+		{ID: 1, ParentID: 0, Name: "Dashboard", Path: "/dashboard", Icon: "DashboardOutlined", Type: 1, Status: 1, Sort: 1},
+		{ID: 2, ParentID: 0, Name: "Admin Management", Path: "/system/admin", Icon: "SettingOutlined", Type: 1, Status: 1, Sort: 2},
+		{ID: 3, ParentID: 0, Name: "Role Management", Path: "/system/role", Icon: "SettingOutlined", Type: 1, Status: 1, Sort: 3},
+		{ID: 4, ParentID: 0, Name: "Menu Management", Path: "/system/menu", Icon: "SettingOutlined", Type: 1, Status: 1, Sort: 4},
+		{ID: 5, ParentID: 0, Name: "User Management", Path: "/user", Icon: "UserOutlined", Type: 1, Status: 1, Sort: 5},
+		{ID: 6, ParentID: 0, Name: "Enterprise Management", Path: "/enterprise", Icon: "BankOutlined", Type: 1, Status: 1, Sort: 6},
+		{ID: 7, ParentID: 0, Name: "Product Management", Path: "/product", Icon: "ShoppingOutlined", Type: 1, Status: 1, Sort: 7},
+		{ID: 8, ParentID: 0, Name: "Category Management", Path: "/product/category", Icon: "ShoppingOutlined", Type: 1, Status: 1, Sort: 8},
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
 		"message": "success",
-		"data": gin.H{
-			"list":  []interface{}{},
-			"total": 0,
-		},
+		"data":    pageResult[menuItem]{List: menus, Total: len(menus)},
 	})
 }
 
@@ -252,13 +454,57 @@ func DeleteMenu(c *gin.Context) {
 
 // ListUsers returns list of users
 func ListUsers(c *gin.Context) {
+	db := database.GetDB()
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+	limit, offset := parsePageParams(c.Query("page"), c.Query("pageSize"))
+
+	total, err := queryCount(ctx, db, `SELECT COUNT(*) FROM users WHERE deleted_at IS NULL`)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+
+	hasEnterpriseID := columnExists(ctx, db, "users", "enterprise_id")
+	query := `
+		SELECT id, username, COALESCE(phone, ''), COALESCE(email, ''), status, created_at`
+	if hasEnterpriseID {
+		query += `, enterprise_id`
+	}
+	query += ` FROM users WHERE deleted_at IS NULL ORDER BY id DESC LIMIT ? OFFSET ?`
+
+	rows, err := db.QueryContext(ctx, query, limit, offset)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	items := make([]userItem, 0)
+	for rows.Next() {
+		var item userItem
+		item.RealName = ""
+		if hasEnterpriseID {
+			if err := rows.Scan(&item.ID, &item.Username, &item.Phone, &item.Email, &item.Status, &item.CreatedAt, &item.EnterpriseID); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+				return
+			}
+		} else {
+			if err := rows.Scan(&item.ID, &item.Username, &item.Phone, &item.Email, &item.Status, &item.CreatedAt); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+				return
+			}
+		}
+		if item.RealName == "" {
+			item.RealName = item.Username
+		}
+		items = append(items, item)
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
 		"message": "success",
-		"data": gin.H{
-			"list":  []interface{}{},
-			"total": 0,
-		},
+		"data":    pageResult[userItem]{List: items, Total: total},
 	})
 }
 
@@ -281,272 +527,549 @@ func UpdateUserStatus(c *gin.Context) {
 
 // ListEnterprises returns list of enterprises
 func ListEnterprises(c *gin.Context) {
-	page, pageSize := parsePageParams(c)
-	db := store.DB().Model(&store.Enterprise{}).Where("deleted_at IS NULL")
+	db := database.GetDB()
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+	limit, offset := parsePageParams(c.Query("page"), c.Query("pageSize"))
+	whereParts := []string{"deleted_at IS NULL"}
+	args := make([]any, 0)
 	if status := c.Query("status"); status != "" {
-		db = db.Where("status = ?", status)
+		statusValue, err := strconv.Atoi(status)
+		if err == nil {
+			whereParts = append(whereParts, "status = ?")
+			args = append(args, statusValue)
+		}
 	}
+	whereClause := strings.Join(whereParts, " AND ")
 
-	var total int64
-	if err := db.Count(&total).Error; err != nil {
+	total, err := queryCount(ctx, db, fmt.Sprintf(`SELECT COUNT(*) FROM enterprises WHERE %s`, whereClause), args...)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 		return
 	}
 
-	var enterprises []store.Enterprise
-	if err := db.Order("id desc").Offset((page - 1) * pageSize).Limit(pageSize).Find(&enterprises).Error; err != nil {
+	queryArgs := append(append([]any{}, args...), limit, offset)
+	rows, err := db.QueryContext(ctx, fmt.Sprintf(`
+		SELECT id, name, COALESCE(credit_code, ''), status, created_at, verification_info, COALESCE(audit_remark, ''), COALESCE(remark, '')
+		FROM enterprises
+		WHERE %s
+		ORDER BY id DESC
+		LIMIT ? OFFSET ?`, whereClause), queryArgs...)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 		return
 	}
+	defer rows.Close()
 
-	list := make([]gin.H, 0, len(enterprises))
-	for _, enterprise := range enterprises {
-		auditRemark := parseAuditRemark(enterprise.Remark)
-		list = append(list, gin.H{
-			"id":            enterprise.ID,
-			"name":          enterprise.Name,
-			"shortName":     enterprise.EnterpriseCode,
-			"creditCode":    enterprise.CreditCode,
-			"contactPerson": "",
-			"contactPhone":   "",
-			"status":        enterprise.Status,
-			"auditRemark":   auditRemark,
-			"createdAt":     enterprise.CreatedAt.Format("2006-01-02 15:04:05"),
-		})
+	items := make([]enterpriseItem, 0)
+	for rows.Next() {
+		var item enterpriseItem
+		var verification sql.NullString
+		var createdAt sql.NullTime
+		var auditRemark sql.NullString
+		var legacyRemark sql.NullString
+		if err := rows.Scan(&item.ID, &item.Name, &item.CreditCode, &item.Status, &createdAt, &verification, &auditRemark, &legacyRemark); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+			return
+		}
+		if createdAt.Valid {
+			item.CreatedAt = createdAt.Time
+		}
+		info := parseVerificationInfo(verification)
+		item.LegalPerson = info.LegalPerson
+		item.ContactPerson = info.ContactName
+		item.ContactPhone = info.ContactPhone
+		item.Address = info.Address
+		if auditRemark.Valid && auditRemark.String != "" {
+			item.AuditRemark = auditRemark.String
+		} else if legacyRemark.Valid {
+			item.AuditRemark = parseLegacyAuditRemark(legacyRemark.String)
+		}
+		items = append(items, item)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
 		"message": "success",
-		"data": gin.H{
-			"list":  list,
-			"total": total,
-		},
+		"data":    pageResult[enterpriseItem]{List: items, Total: total},
 	})
 }
 
 // GetEnterprise returns a single enterprise
 func GetEnterprise(c *gin.Context) {
+	db := database.GetDB()
+	if db == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"code": 503, "message": "database unavailable"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	var item enterpriseItem
+	var verification sql.NullString
+	var createdAt sql.NullTime
+	var updatedAt sql.NullTime
+	var auditedAt sql.NullTime
+	var auditRemark sql.NullString
+	row := db.QueryRowContext(ctx, `
+		SELECT id, name, COALESCE(credit_code, ''), status, COALESCE(audit_remark, ''), audited_at, created_at, updated_at, verification_info
+		FROM enterprises
+		WHERE deleted_at IS NULL AND id = ?
+		LIMIT 1`, c.Param("id"))
+
+	if err := row.Scan(&item.ID, &item.Name, &item.CreditCode, &item.Status, &auditRemark, &auditedAt, &createdAt, &updatedAt, &verification); err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "enterprise not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+
+	if createdAt.Valid {
+		item.CreatedAt = createdAt.Time
+	}
+	if updatedAt.Valid {
+		item.UpdatedAt = updatedAt.Time
+	}
+	if auditedAt.Valid {
+		item.AuditedAt = &auditedAt.Time
+	}
+	if auditRemark.Valid {
+		item.AuditRemark = auditRemark.String
+	}
+
+	info := parseVerificationInfo(verification)
+	item.LegalPerson = info.LegalPerson
+	item.ContactPerson = info.ContactName
+	item.ContactPhone = info.ContactPhone
+	item.Address = info.Address
+	item.BusinessLicense = info.BusinessLicense
+
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
 		"message": "success",
-		"data":    nil,
+		"data":    item,
 	})
 }
 
 // AuditEnterprise audits an enterprise
 func AuditEnterprise(c *gin.Context) {
-	id, _ := strconv.ParseUint(c.Param("id"), 10, 64)
+	db := database.GetDB()
+	if db == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"code": 503, "message": "database unavailable"})
+		return
+	}
+
 	var req struct {
-		Status      int    `json:"status"`
+		Status      int    `json:"status" binding:"required"`
 		AuditRemark string `json:"auditRemark"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid audit payload"})
+		return
+	}
+	if req.Status < 0 || req.Status > 2 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid enterprise status"})
 		return
 	}
 
-	update := map[string]interface{}{
-		"status":     req.Status,
-		"updated_at": time.Now(),
-		"updated_by": 1,
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	adminID, _ := c.Get("admin_id")
+	adminIDValue, _ := adminID.(int64)
+	if adminIDValue == 0 {
+		switch v := adminID.(type) {
+		case int:
+			adminIDValue = int64(v)
+		case float64:
+			adminIDValue = int64(v)
+		}
 	}
 
-	if req.AuditRemark != "" {
-		update["remark"] = marshalRemark(req.AuditRemark)
+	setParts := []string{"status = ?"}
+	args := []any{req.Status}
+	if columnExists(ctx, db, "enterprises", "audit_remark") {
+		setParts = append(setParts, "audit_remark = ?")
+		args = append(args, req.AuditRemark)
+	}
+	if columnExists(ctx, db, "enterprises", "auditor_id") {
+		setParts = append(setParts, "auditor_id = ?")
+		args = append(args, adminIDValue)
+	}
+	if columnExists(ctx, db, "enterprises", "audited_at") {
+		setParts = append(setParts, "audited_at = ?")
+		args = append(args, time.Now())
 	}
 
-	if err := store.DB().Model(&store.Enterprise{}).Where("id = ?", id).Updates(update).Error; err != nil {
+	args = append(args, c.Param("id"))
+	query := fmt.Sprintf("UPDATE enterprises SET %s WHERE id = ? AND deleted_at IS NULL", strings.Join(setParts, ", "))
+	result, err := db.ExecContext(ctx, query, args...)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 		return
 	}
+	affected, _ := result.RowsAffected()
+	if affected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "enterprise not found"})
+		return
+	}
 
-	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success"})
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "审核完成",
+		"data":    true,
+	})
 }
 
 // ListProducts returns list of products
 func ListProducts(c *gin.Context) {
-	page, pageSize := parsePageParams(c)
-	db := store.DB().Model(&store.Product{}).Where("deleted_at IS NULL")
+	db := database.GetDB()
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+	limit, offset := parsePageParams(c.Query("page"), c.Query("pageSize"))
+	whereParts := []string{"deleted_at IS NULL"}
+	args := make([]any, 0)
 	if status := c.Query("status"); status != "" {
-		db = db.Where("status = ?", status)
-	}
-
-	var total int64
-	if err := db.Count(&total).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
-		return
-	}
-
-	var products []store.Product
-	if err := db.Order("id desc").Offset((page - 1) * pageSize).Limit(pageSize).Find(&products).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
-		return
-	}
-
-	list := make([]gin.H, 0, len(products))
-	for _, product := range products {
-		spec := product.Spec
-		if spec == "" {
-			spec = "-"
+		statusValue, err := strconv.Atoi(status)
+		if err == nil {
+			rawStatus := "pending_review"
+			switch statusValue {
+			case 1:
+				rawStatus = "approved"
+			case 2:
+				rawStatus = "rejected"
+			}
+			whereParts = append(whereParts, "status = ?")
+			args = append(args, rawStatus)
 		}
-		list = append(list, gin.H{
-			"id":           product.ID,
-			"name":         product.Name,
-			"spec":         spec,
-			"unit":         "吨",
-			"price":        product.UnitPrice,
-			"stock":        product.AvailableQty,
-			"status":       product.Status,
-			"auditRemark":  product.AuditRemark,
-			"createdAt":    product.CreatedAt.Format("2006-01-02 15:04:05"),
-			"enterpriseId": product.EnterpriseID,
-		})
+	}
+	whereClause := strings.Join(whereParts, " AND ")
+
+	total, err := queryCount(ctx, db, fmt.Sprintf(`SELECT COUNT(*) FROM products WHERE %s`, whereClause), args...)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+
+	queryArgs := append(append([]any{}, args...), limit, offset)
+	rows, err := db.QueryContext(ctx, fmt.Sprintf(`
+		SELECT id, name, enterprise_id, COALESCE(specs, ''), COALESCE(unit, ''), price, stock, COALESCE(description, ''), image_urls, status, created_at, COALESCE(audit_remark, '')
+		FROM products
+		WHERE %s
+		ORDER BY id DESC
+		LIMIT ? OFFSET ?`, whereClause), queryArgs...)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	items := make([]productItem, 0)
+	for rows.Next() {
+		var item productItem
+		var imageURLs sql.NullString
+		var rawStatus string
+		var auditRemark sql.NullString
+		if err := rows.Scan(&item.ID, &item.Name, &item.EnterpriseID, &item.Spec, &item.Unit, &item.Price, &item.Stock, &item.Description, &imageURLs, &rawStatus, &item.CreatedAt, &auditRemark); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+			return
+		}
+		item.Images = parseImages(imageURLs)
+		item.Status = mapProductStatus(rawStatus)
+		if auditRemark.Valid {
+			item.AuditRemark = auditRemark.String
+		}
+		items = append(items, item)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
 		"message": "success",
-		"data": gin.H{
-			"list":  list,
-			"total": total,
-		},
+		"data":    pageResult[productItem]{List: items, Total: total},
 	})
 }
 
 // ListOrders returns list of orders
 func ListOrders(c *gin.Context) {
-	page, pageSize := parsePageParams(c)
-	db := store.DB().Model(&store.Order{}).Where("deleted_at IS NULL")
+	db := database.GetDB()
+	if db == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"code": 503, "message": "database unavailable"})
+		return
+	}
 
-	var total int64
-	if err := db.Count(&total).Error; err != nil {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+	limit, offset := parsePageParams(c.Query("page"), c.Query("pageSize"))
+
+	total, err := queryCount(ctx, db, `SELECT COUNT(*) FROM orders WHERE deleted_at IS NULL`)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 		return
 	}
 
-	var orders []store.Order
-	if err := db.Order("id desc").Offset((page-1)*pageSize).Limit(pageSize).Find(&orders).Error; err != nil {
+	rows, err := db.QueryContext(ctx, `
+		SELECT id, order_no, buyer_id, COALESCE(buyer_name, ''), seller_id, COALESCE(seller_enterprise_id, 0),
+		       COALESCE(seller_name, ''), COALESCE(total_quantity, 0), COALESCE(total_amount, 0),
+		       COALESCE(tax_total_amount, 0), COALESCE(currency, 'CNY'), status,
+		       COALESCE(delivery_voucher, ''), COALESCE(receipt_voucher, ''), receipt_at, expires_at, created_at
+		FROM orders
+		WHERE deleted_at IS NULL
+		ORDER BY id DESC
+		LIMIT ? OFFSET ?`, limit, offset)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 		return
 	}
+	defer rows.Close()
 
-	list := make([]gin.H, 0, len(orders))
-	for _, order := range orders {
-		item := gin.H{
-			"id":                 order.ID,
-			"orderNo":            order.OrderNo,
-			"buyerId":            order.BuyerID,
-			"buyerName":          order.BuyerName,
-			"sellerId":           order.SellerID,
-			"sellerEnterpriseId": order.SellerEnterpriseID,
-			"sellerName":         order.SellerName,
-			"totalQuantity":      order.TotalQuantity,
-			"totalAmount":        order.TotalAmount,
-			"taxTotalAmount":     order.TaxTotalAmount,
-			"currency":           order.Currency,
-			"status":             order.Status,
-			"deliveryVoucher":    order.DeliveryVoucher,
-			"receiptVoucher":     order.ReceiptVoucher,
-			"createdAt":          order.CreatedAt.Format("2006-01-02 15:04:05"),
+	items := make([]orderItem, 0)
+	for rows.Next() {
+		var item orderItem
+		var rawStatus sql.NullString
+		if err := rows.Scan(
+			&item.ID,
+			&item.OrderNo,
+			&item.BuyerID,
+			&item.BuyerName,
+			&item.SellerID,
+			&item.SellerEnterpriseID,
+			&item.SellerName,
+			&item.TotalQuantity,
+			&item.TotalAmount,
+			&item.TaxTotalAmount,
+			&item.Currency,
+			&rawStatus,
+			&item.DeliveryVoucher,
+			&item.ReceiptVoucher,
+			&item.ReceiptAt,
+			&item.ExpiresAt,
+			&item.CreatedAt,
+		); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+			return
 		}
-		if order.ExpiresAt != nil {
-			item["expiresAt"] = order.ExpiresAt.Format("2006-01-02 15:04:05")
-		}
-		if order.ReceiptAt != nil {
-			item["receiptAt"] = order.ReceiptAt.Format("2006-01-02 15:04:05")
-		}
-		list = append(list, item)
+		item.Status = mapOrderStatus(rawStatus.String)
+		items = append(items, item)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
 		"message": "success",
-		"data": gin.H{
-			"list":  list,
-			"total": total,
-		},
+		"data":    pageResult[orderItem]{List: items, Total: total},
 	})
 }
 
 // GetProduct returns a single product
 func GetProduct(c *gin.Context) {
+	db := database.GetDB()
+	if db == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"code": 503, "message": "database unavailable"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	var item productItem
+	var imageURLs sql.NullString
+	var rawStatus string
+	var auditRemark sql.NullString
+	var auditedAt sql.NullTime
+	var updatedAt sql.NullTime
+
+	row := db.QueryRowContext(ctx, `
+		SELECT id, name, enterprise_id, COALESCE(specs, ''), COALESCE(unit, ''), price, stock,
+		       COALESCE(description, ''), image_urls, status, COALESCE(audit_remark, ''), approved_at, created_at, updated_at
+		FROM products
+		WHERE deleted_at IS NULL AND id = ?
+		LIMIT 1`, c.Param("id"))
+
+	if err := row.Scan(
+		&item.ID,
+		&item.Name,
+		&item.EnterpriseID,
+		&item.Spec,
+		&item.Unit,
+		&item.Price,
+		&item.Stock,
+		&item.Description,
+		&imageURLs,
+		&rawStatus,
+		&auditRemark,
+		&auditedAt,
+		&item.CreatedAt,
+		&updatedAt,
+	); err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "product not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+
+	item.Images = parseImages(imageURLs)
+	item.Status = mapProductStatus(rawStatus)
+	if auditRemark.Valid {
+		item.AuditRemark = auditRemark.String
+	}
+	if auditedAt.Valid {
+		item.AuditedAt = &auditedAt.Time
+	}
+	if updatedAt.Valid {
+		item.UpdatedAt = updatedAt.Time
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
 		"message": "success",
-		"data":    nil,
+		"data":    item,
 	})
 }
 
 // AuditProduct audits a product
 func AuditProduct(c *gin.Context) {
-	id, _ := strconv.ParseUint(c.Param("id"), 10, 64)
+	db := database.GetDB()
+	if db == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"code": 503, "message": "database unavailable"})
+		return
+	}
+
 	var req struct {
-		Status      int    `json:"status"`
+		Status      int    `json:"status" binding:"required"`
 		AuditRemark string `json:"auditRemark"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid audit payload"})
+		return
+	}
+	if req.Status < 0 || req.Status > 2 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid product status"})
 		return
 	}
 
-	update := map[string]interface{}{
-		"status":     req.Status,
-		"updated_at": time.Now(),
-		"updated_by": 1,
+	rawStatus := "pending_review"
+	switch req.Status {
+	case 1:
+		rawStatus = "approved"
+	case 2:
+		rawStatus = "rejected"
 	}
-	if err := store.DB().Model(&store.Product{}).Where("id = ?", id).Updates(update).Error; err != nil {
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	adminID, _ := c.Get("admin_id")
+	adminUsername, _ := c.Get("admin_username")
+	adminName := fmt.Sprint(adminUsername)
+	operatorID := int64(0)
+	switch v := adminID.(type) {
+	case int64:
+		operatorID = v
+	case int:
+		operatorID = int64(v)
+	case float64:
+		operatorID = int64(v)
+	}
+
+	setParts := []string{"status = ?"}
+	args := []any{rawStatus}
+	if columnExists(ctx, db, "products", "audit_remark") {
+		setParts = append(setParts, "audit_remark = ?")
+		args = append(args, req.AuditRemark)
+	}
+	if columnExists(ctx, db, "products", "approved_at") {
+		if req.Status == 1 {
+			setParts = append(setParts, "approved_at = ?")
+			args = append(args, time.Now())
+		} else {
+			setParts = append(setParts, "approved_at = NULL")
+		}
+	}
+	if columnExists(ctx, db, "products", "updated_at") {
+		setParts = append(setParts, "updated_at = ?")
+		args = append(args, time.Now())
+	}
+
+	args = append(args, c.Param("id"))
+	query := fmt.Sprintf("UPDATE products SET %s WHERE id = ? AND deleted_at IS NULL", strings.Join(setParts, ", "))
+	result, err := db.ExecContext(ctx, query, args...)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 		return
 	}
+	affected, _ := result.RowsAffected()
+	if affected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "product not found"})
+		return
+	}
 
-	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success"})
+	if tableExists(ctx, db, "product_audit_logs") {
+		var skuID string
+		productID := int64(0)
+		fmt.Sscanf(c.Param("id"), "%d", &productID)
+		_ = db.QueryRowContext(ctx, `SELECT COALESCE(sku_id, '') FROM products WHERE id = ? LIMIT 1`, c.Param("id")).Scan(&skuID)
+		if _, err := db.ExecContext(ctx, `
+			INSERT INTO product_audit_logs (product_id, product_sku_id, action, status, operator_id, operator_name, remark, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			productID,
+			skuID,
+			"platform_audit",
+			rawStatus,
+			operatorID,
+			adminName,
+			req.AuditRemark,
+			time.Now(),
+		); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+			return
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "success",
+	})
 }
 
 // ListProductCategories returns list of product categories
 func ListProductCategories(c *gin.Context) {
+	db := database.GetDB()
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	if db != nil && tableExists(ctx, db, "product_categories") {
+		rows, err := db.QueryContext(ctx, `
+			SELECT id, COALESCE(parent_id, 0), name, COALESCE(code, ''), COALESCE(icon, ''), COALESCE(sort, 0), COALESCE(status, 1)
+			FROM product_categories
+			WHERE deleted_at IS NULL
+			ORDER BY sort ASC, id ASC`)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+			return
+		}
+		defer rows.Close()
+		items := make([]categoryItem, 0)
+		for rows.Next() {
+			var item categoryItem
+			if err := rows.Scan(&item.ID, &item.ParentID, &item.Name, &item.Code, &item.Icon, &item.Sort, &item.Status); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+				return
+			}
+			items = append(items, item)
+		}
+		c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": pageResult[categoryItem]{List: items, Total: len(items)}})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
 		"message": "success",
-		"data": gin.H{
-			"list":  []interface{}{},
-			"total": 0,
-		},
+		"data":    pageResult[categoryItem]{List: []categoryItem{}, Total: 0},
 	})
-}
-
-func parsePageParams(c *gin.Context) (int, int) {
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
-	if page <= 0 {
-		page = 1
-	}
-	if pageSize <= 0 {
-		pageSize = 10
-	}
-	return page, pageSize
-}
-
-func marshalRemark(remark string) string {
-	value, _ := json.Marshal(map[string]string{
-		"audit_reason": remark,
-	})
-	return string(value)
-}
-
-func parseAuditRemark(raw string) string {
-	if raw == "" {
-		return ""
-	}
-
-	var payload map[string]string
-	if err := json.Unmarshal([]byte(raw), &payload); err == nil {
-		if value := payload["audit_reason"]; value != "" {
-			return value
-		}
-	}
-
-	return raw
 }
 
 // CreateProductCategory creates a new product category

@@ -29,11 +29,22 @@ export interface PageResult<T> {
   total: number
 }
 
+export interface DashboardStats {
+  totalUsers: number
+  totalEnterprises: number
+  totalProducts: number
+  pendingAudits: number
+}
+
 // Auth API
 export const authApi = {
   login: (params: LoginParams) => post<LoginResult>('/login', params),
   logout: () => post('/logout'),
   getInfo: () => get<LoginResult['adminInfo']>('/admin/info'),
+}
+
+export const dashboardApi = {
+  stats: () => get<DashboardStats>('/dashboard/stats'),
 }
 
 // Admin API
@@ -137,6 +148,7 @@ export interface EnterpriseItem {
   auditorId?: number
   auditedAt?: string
   createdAt: string
+  updatedAt?: string
 }
 
 export const enterpriseApi = {
@@ -162,6 +174,7 @@ export interface ProductItem {
   auditorId?: number
   auditedAt?: string
   createdAt: string
+  updatedAt?: string
 }
 
 export const productApi = {
