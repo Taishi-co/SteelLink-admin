@@ -735,15 +735,17 @@ func ListProducts(c *gin.Context) {
 	if status := c.Query("status"); status != "" {
 		statusValue, err := strconv.Atoi(status)
 		if err == nil {
-			rawStatus := "pending_review"
 			switch statusValue {
+			case 0:
+				whereParts = append(whereParts, "status IN (?, ?)")
+				args = append(args, 0, 1)
 			case 1:
-				rawStatus = "approved"
+				whereParts = append(whereParts, "status = ?")
+				args = append(args, 2)
 			case 2:
-				rawStatus = "rejected"
+				whereParts = append(whereParts, "status = ?")
+				args = append(args, 4)
 			}
-			whereParts = append(whereParts, "status = ?")
-			args = append(args, rawStatus)
 		}
 	}
 	whereClause := strings.Join(whereParts, " AND ")
@@ -756,7 +758,8 @@ func ListProducts(c *gin.Context) {
 
 	queryArgs := append(append([]any{}, args...), limit, offset)
 	rows, err := db.QueryContext(ctx, fmt.Sprintf(`
-		SELECT id, name, enterprise_id, COALESCE(specs, ''), COALESCE(unit, ''), price, stock, COALESCE(description, ''), image_urls, status, created_at, COALESCE(audit_remark, '')
+		SELECT id, name, enterprise_id, COALESCE(specs, ''), COALESCE(unit, ''), COALESCE(unit_price, price, 0),
+		       COALESCE(quantity, stock, 0), COALESCE(description, ''), image_urls, status, created_at, COALESCE(audit_remark, '')
 		FROM products
 		WHERE %s
 		ORDER BY id DESC
@@ -771,14 +774,14 @@ func ListProducts(c *gin.Context) {
 	for rows.Next() {
 		var item productItem
 		var imageURLs sql.NullString
-		var rawStatus string
+		var rawStatus sql.NullString
 		var auditRemark sql.NullString
 		if err := rows.Scan(&item.ID, &item.Name, &item.EnterpriseID, &item.Spec, &item.Unit, &item.Price, &item.Stock, &item.Description, &imageURLs, &rawStatus, &item.CreatedAt, &auditRemark); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 			return
 		}
 		item.Images = parseImages(imageURLs)
-		item.Status = mapProductStatus(rawStatus)
+		item.Status = mapProductStatus(rawStatus.String)
 		if auditRemark.Valid {
 			item.AuditRemark = auditRemark.String
 		}
@@ -881,20 +884,36 @@ func GetProduct(c *gin.Context) {
 	var updatedAt sql.NullTime
 
 	row := db.QueryRowContext(ctx, `
-		SELECT id, name, enterprise_id, COALESCE(specs, ''), COALESCE(unit, ''), price, stock,
+		SELECT id, name, enterprise_id, COALESCE(category, ''), COALESCE(sub_category, ''), COALESCE(steel_mill, ''),
+		       spec, warehouse_info, COALESCE(bundle_no, ''), COALESCE(unit, ''), COALESCE(unit_price, price, 0),
+		       COALESCE(quantity, stock, 0), COALESCE(min_order_qty, 0), COALESCE(delivery_days, 0), COALESCE(quote_validity, 0),
 		       COALESCE(description, ''), image_urls, status, COALESCE(audit_remark, ''), approved_at, created_at, updated_at
 		FROM products
 		WHERE deleted_at IS NULL AND id = ?
 		LIMIT 1`, c.Param("id"))
 
+	var category string
+	var subCategory string
+	var steelMill string
+	var rawSpec sql.NullString
+	var rawWarehouse sql.NullString
+	var bundleNo string
 	if err := row.Scan(
 		&item.ID,
 		&item.Name,
 		&item.EnterpriseID,
-		&item.Spec,
+		&category,
+		&subCategory,
+		&steelMill,
+		&rawSpec,
+		&rawWarehouse,
+		&bundleNo,
 		&item.Unit,
 		&item.Price,
 		&item.Stock,
+		&item.MinOrderQty,
+		&item.DeliveryDays,
+		&item.QuoteValidity,
 		&item.Description,
 		&imageURLs,
 		&rawStatus,
@@ -913,6 +932,20 @@ func GetProduct(c *gin.Context) {
 
 	item.Images = parseImages(imageURLs)
 	item.Status = mapProductStatus(rawStatus)
+	item.Category = category
+	item.SubCategory = subCategory
+	item.SteelMill = steelMill
+	item.BundleNo = bundleNo
+	specInfo := parseProductSpec(rawSpec)
+	item.Spec = specInfo.Spec
+	item.Material = specInfo.Material
+	warehouse := parseWarehouseInfo(rawWarehouse)
+	item.WarehouseName = warehouse.WarehouseName
+	item.WarehouseCode = warehouse.WarehouseCode
+	item.Province = warehouse.Province
+	item.City = warehouse.City
+	item.District = warehouse.District
+	item.Address = warehouse.Address
 	if auditRemark.Valid {
 		item.AuditRemark = auditRemark.String
 	}
@@ -951,12 +984,15 @@ func AuditProduct(c *gin.Context) {
 		return
 	}
 
-	rawStatus := "pending_review"
+	statusValue := 1
+	logStatus := "pending_review"
 	switch req.Status {
 	case 1:
-		rawStatus = "approved"
+		statusValue = 2
+		logStatus = "approved"
 	case 2:
-		rawStatus = "rejected"
+		statusValue = 4
+		logStatus = "rejected"
 	}
 
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
@@ -976,7 +1012,7 @@ func AuditProduct(c *gin.Context) {
 	}
 
 	setParts := []string{"status = ?"}
-	args := []any{rawStatus}
+	args := []any{statusValue}
 	if columnExists(ctx, db, "products", "audit_remark") {
 		setParts = append(setParts, "audit_remark = ?")
 		args = append(args, req.AuditRemark)
@@ -1007,6 +1043,16 @@ func AuditProduct(c *gin.Context) {
 		return
 	}
 
+	var currentStatus int
+	if err := db.QueryRowContext(ctx, `SELECT status FROM products WHERE id = ? LIMIT 1`, c.Param("id")).Scan(&currentStatus); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+	if currentStatus != statusValue {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "product audit status sync failed"})
+		return
+	}
+
 	if tableExists(ctx, db, "product_audit_logs") {
 		var skuID string
 		productID := int64(0)
@@ -1018,7 +1064,7 @@ func AuditProduct(c *gin.Context) {
 			productID,
 			skuID,
 			"platform_audit",
-			rawStatus,
+			logStatus,
 			operatorID,
 			adminName,
 			req.AuditRemark,

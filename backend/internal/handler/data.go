@@ -89,10 +89,24 @@ type productItem struct {
 	Name         string     `json:"name"`
 	CategoryID   *int64     `json:"categoryId,omitempty"`
 	EnterpriseID int64      `json:"enterpriseId"`
+	Category     string     `json:"category,omitempty"`
+	SubCategory  string     `json:"subCategory,omitempty"`
+	SteelMill    string     `json:"steelMill,omitempty"`
 	Spec         string     `json:"spec,omitempty"`
+	Material     string     `json:"material,omitempty"`
+	WarehouseName string    `json:"warehouseName,omitempty"`
+	WarehouseCode string    `json:"warehouseCode,omitempty"`
+	Province     string     `json:"province,omitempty"`
+	City         string     `json:"city,omitempty"`
+	District     string     `json:"district,omitempty"`
+	Address      string     `json:"address,omitempty"`
+	BundleNo     string     `json:"bundleNo,omitempty"`
 	Unit         string     `json:"unit,omitempty"`
 	Price        float64    `json:"price"`
-	Stock        int64      `json:"stock"`
+	Stock        float64    `json:"stock"`
+	MinOrderQty  float64    `json:"minOrderQty"`
+	DeliveryDays int        `json:"deliveryDays"`
+	QuoteValidity int       `json:"quoteValidity"`
 	Description  string     `json:"description,omitempty"`
 	Images       []string   `json:"images,omitempty"`
 	Status       int        `json:"status"`
@@ -138,6 +152,20 @@ type enterpriseVerificationInfo struct {
 	ContactName    string `json:"contact_name"`
 	ContactPhone   string `json:"contact_phone"`
 	Address        string `json:"address"`
+}
+
+type productSpecInfo struct {
+	Material string `json:"material"`
+	Spec     string `json:"spec"`
+}
+
+type warehouseInfo struct {
+	WarehouseName string `json:"warehouse_name"`
+	WarehouseCode string `json:"warehouse_code"`
+	Province      string `json:"province"`
+	City          string `json:"city"`
+	District      string `json:"district"`
+	Address       string `json:"address"`
 }
 
 func parsePageParams(pageStr, pageSizeStr string) (limit, offset int) {
@@ -189,10 +217,14 @@ func columnExists(ctx context.Context, db *sql.DB, table, column string) bool {
 
 func mapProductStatus(raw string) int {
 	switch strings.ToLower(raw) {
-	case "approved":
+	case "2", "approved":
 		return 1
-	case "rejected", "offline":
+	case "4", "rejected":
 		return 2
+	case "3", "offline":
+		return 2
+	case "1", "0", "pending_review", "draft":
+		return 0
 	default:
 		return 0
 	}
@@ -263,4 +295,22 @@ func parseImages(raw sql.NullString) []string {
 	var images []string
 	_ = json.Unmarshal([]byte(raw.String), &images)
 	return images
+}
+
+func parseProductSpec(raw sql.NullString) productSpecInfo {
+	if !raw.Valid || raw.String == "" {
+		return productSpecInfo{}
+	}
+	var spec productSpecInfo
+	_ = json.Unmarshal([]byte(raw.String), &spec)
+	return spec
+}
+
+func parseWarehouseInfo(raw sql.NullString) warehouseInfo {
+	if !raw.Valid || raw.String == "" {
+		return warehouseInfo{}
+	}
+	var info warehouseInfo
+	_ = json.Unmarshal([]byte(raw.String), &info)
+	return info
 }

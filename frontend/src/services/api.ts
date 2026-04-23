@@ -163,10 +163,24 @@ export interface ProductItem {
   name: string
   categoryId?: number
   enterpriseId: number
+  category?: string
+  subCategory?: string
+  steelMill?: string
   spec?: string
+  material?: string
+  warehouseName?: string
+  warehouseCode?: string
+  province?: string
+  city?: string
+  district?: string
+  address?: string
+  bundleNo?: string
   unit?: string
   price: number
   stock: number
+  minOrderQty?: number
+  deliveryDays?: number
+  quoteValidity?: number
   description?: string
   images?: string[]
   status: number
