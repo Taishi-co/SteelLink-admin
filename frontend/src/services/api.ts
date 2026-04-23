@@ -85,6 +85,8 @@ export const roleApi = {
   create: (data: Partial<RoleItem>) => post('/roles', data),
   update: (id: number, data: Partial<RoleItem>) => put(`/roles/${id}`, data),
   delete: (id: number) => del(`/roles/${id}`),
+  getMenus: (id: number) => get<number[]>(`/roles/${id}/menus`),
+  updateMenus: (id: number, menuIds: number[]) => put(`/roles/${id}/menus`, { menuIds }),
 }
 
 // Menu API

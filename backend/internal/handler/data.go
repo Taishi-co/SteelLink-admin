@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -30,6 +31,16 @@ type adminItem struct {
 	Status    int       `json:"status"`
 	RoleID    *int64    `json:"roleId,omitempty"`
 	CreatedAt time.Time `json:"createdAt"`
+}
+
+type adminUpsertRequest struct {
+	Username string `json:"username" binding:"required"`
+	Password string `json:"password,omitempty"`
+	RealName string `json:"realName"`
+	Email    string `json:"email"`
+	Phone    string `json:"phone"`
+	Status   int    `json:"status"`
+	RoleID   *int64 `json:"roleId"`
 }
 
 type roleItem struct {
@@ -137,13 +148,37 @@ type orderItem struct {
 }
 
 type categoryItem struct {
-	ID       int64 `json:"id"`
-	ParentID int64 `json:"parentId"`
+	ID       int64  `json:"id"`
+	ParentID int64  `json:"parentId"`
 	Name     string `json:"name"`
 	Code     string `json:"code,omitempty"`
 	Icon     string `json:"icon,omitempty"`
 	Sort     int    `json:"sort"`
 	Status   int    `json:"status"`
+}
+
+type roleUpsertRequest struct {
+	Name        string `json:"name" binding:"required"`
+	Code        string `json:"code" binding:"required"`
+	Description string `json:"description"`
+	Status      int    `json:"status"`
+	Sort        int    `json:"sort"`
+}
+
+type menuUpsertRequest struct {
+	ParentID   int64  `json:"parentId"`
+	Name       string `json:"name" binding:"required"`
+	Path       string `json:"path"`
+	Component  string `json:"component"`
+	Icon       string `json:"icon"`
+	Type       int    `json:"type"`
+	Permission string `json:"permission"`
+	Status     int    `json:"status"`
+	Sort       int    `json:"sort"`
+}
+
+type roleMenusRequest struct {
+	MenuIDs []int64 `json:"menuIds"`
 }
 
 type enterpriseVerificationInfo struct {
@@ -295,6 +330,192 @@ func parseImages(raw sql.NullString) []string {
 	var images []string
 	_ = json.Unmarshal([]byte(raw.String), &images)
 	return images
+}
+
+var localAdminStore = struct {
+	mu     sync.Mutex
+	nextID int64
+	items  []adminItem
+}{
+	nextID: 2,
+}
+
+func ensureLocalAdmins() {
+	if len(localAdminStore.items) == 0 {
+		localAdminStore.items = []adminItem{{
+			ID:        1,
+			Username:  defaultAdminUsername(),
+			RealName:  defaultAdminRealName(),
+			Status:    1,
+			RoleID:    func() *int64 { value := int64(1); return &value }(),
+			CreatedAt: time.Now(),
+		}}
+		return
+	}
+
+	localAdminStore.items[0].Username = defaultAdminUsername()
+	localAdminStore.items[0].RealName = defaultAdminRealName()
+}
+
+func listLocalAdmins() []adminItem {
+	localAdminStore.mu.Lock()
+	defer localAdminStore.mu.Unlock()
+
+	ensureLocalAdmins()
+	items := make([]adminItem, len(localAdminStore.items))
+	copy(items, localAdminStore.items)
+	return items
+}
+
+func getLocalAdminByID(id int64) (adminItem, bool) {
+	localAdminStore.mu.Lock()
+	defer localAdminStore.mu.Unlock()
+
+	ensureLocalAdmins()
+	for _, item := range localAdminStore.items {
+		if item.ID == id {
+			return item, true
+		}
+	}
+	return adminItem{}, false
+}
+
+func createLocalAdmin(req adminUpsertRequest) adminItem {
+	localAdminStore.mu.Lock()
+	defer localAdminStore.mu.Unlock()
+
+	ensureLocalAdmins()
+	item := adminItem{
+		ID:        localAdminStore.nextID,
+		Username:  req.Username,
+		RealName:  req.RealName,
+		Email:     req.Email,
+		Phone:     req.Phone,
+		Status:    req.Status,
+		RoleID:    req.RoleID,
+		CreatedAt: time.Now(),
+	}
+	localAdminStore.nextID += 1
+	localAdminStore.items = append(localAdminStore.items, item)
+	return item
+}
+
+func updateLocalAdmin(id int64, req adminUpsertRequest) (adminItem, bool) {
+	localAdminStore.mu.Lock()
+	defer localAdminStore.mu.Unlock()
+
+	ensureLocalAdmins()
+	for index, item := range localAdminStore.items {
+		if item.ID != id {
+			continue
+		}
+
+		if item.ID == 1 {
+			localAdminStore.items[index].RealName = req.RealName
+			localAdminStore.items[index].Email = req.Email
+			localAdminStore.items[index].Phone = req.Phone
+			localAdminStore.items[index].Status = req.Status
+			localAdminStore.items[index].RoleID = req.RoleID
+		} else {
+			localAdminStore.items[index].Username = req.Username
+			localAdminStore.items[index].RealName = req.RealName
+			localAdminStore.items[index].Email = req.Email
+			localAdminStore.items[index].Phone = req.Phone
+			localAdminStore.items[index].Status = req.Status
+			localAdminStore.items[index].RoleID = req.RoleID
+		}
+		return localAdminStore.items[index], true
+	}
+
+	return adminItem{}, false
+}
+
+func deleteLocalAdmin(id int64) bool {
+	localAdminStore.mu.Lock()
+	defer localAdminStore.mu.Unlock()
+
+	ensureLocalAdmins()
+	if id == 1 {
+		return false
+	}
+
+	for index, item := range localAdminStore.items {
+		if item.ID != id {
+			continue
+		}
+		localAdminStore.items = append(localAdminStore.items[:index], localAdminStore.items[index+1:]...)
+		return true
+	}
+
+	return false
+}
+
+func AutoMigrate(db *sql.DB) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if !tableExists(ctx, db, "admin_roles") {
+		db.ExecContext(ctx, `CREATE TABLE admin_roles (
+			id BIGINT AUTO_INCREMENT PRIMARY KEY,
+			name VARCHAR(64) NOT NULL,
+			code VARCHAR(64) NOT NULL,
+			description VARCHAR(255) DEFAULT '',
+			status TINYINT DEFAULT 1,
+			sort INT DEFAULT 0,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			deleted_at DATETIME DEFAULT NULL
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`)
+
+		db.ExecContext(ctx, `INSERT INTO admin_roles (name, code, description, status, sort) VALUES
+			('超级管理员', 'super_admin', '拥有所有权限', 1, 1),
+			('运营管理员', 'operator', '负责日常运营管理', 1, 2),
+			('审核员', 'auditor', '负责企业和商品审核', 1, 3)`)
+	}
+
+	if !tableExists(ctx, db, "admin_menus") {
+		db.ExecContext(ctx, `CREATE TABLE admin_menus (
+			id BIGINT AUTO_INCREMENT PRIMARY KEY,
+			parent_id BIGINT DEFAULT 0,
+			name VARCHAR(64) NOT NULL,
+			path VARCHAR(255) DEFAULT '',
+			component VARCHAR(255) DEFAULT '',
+			icon VARCHAR(64) DEFAULT '',
+			type TINYINT DEFAULT 1,
+			permission VARCHAR(128) DEFAULT '',
+			status TINYINT DEFAULT 1,
+			sort INT DEFAULT 0,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			deleted_at DATETIME DEFAULT NULL
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`)
+
+		db.ExecContext(ctx, `INSERT INTO admin_menus (parent_id, name, path, icon, type, permission, status, sort) VALUES
+			(0, '数据概览', '/dashboard', 'DashboardOutlined', 1, '', 1, 1),
+			(0, '系统管理', '', 'SettingOutlined', 1, '', 1, 2),
+			(2, '管理员管理', '/system/admin', 'TeamOutlined', 1, 'system:admin', 1, 1),
+			(2, '角色权限', '/system/role', 'SafetyOutlined', 1, 'system:role', 1, 2),
+			(2, '菜单配置', '/system/menu', 'MenuOutlined', 1, 'system:menu', 1, 3),
+			(0, '业务管理', '', 'SolutionOutlined', 1, '', 1, 3),
+			(6, '用户管理', '/user', 'UserOutlined', 1, 'business:user', 1, 1),
+			(6, '企业审核', '/enterprise', 'BankOutlined', 1, 'business:enterprise', 1, 2),
+			(0, '商品中心', '', 'ShoppingOutlined', 1, '', 1, 4),
+			(9, '商品管理', '/product', 'ShopOutlined', 1, 'product:manage', 1, 1),
+			(9, '类目配置', '/product/category', 'AppstoreOutlined', 1, 'product:category', 1, 2)`)
+	}
+
+	if !tableExists(ctx, db, "admin_role_menus") {
+		db.ExecContext(ctx, `CREATE TABLE admin_role_menus (
+			id BIGINT AUTO_INCREMENT PRIMARY KEY,
+			role_id BIGINT NOT NULL,
+			menu_id BIGINT NOT NULL,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE KEY uk_role_menu (role_id, menu_id)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`)
+
+		db.ExecContext(ctx, `INSERT INTO admin_role_menus (role_id, menu_id)
+			SELECT 1, id FROM admin_menus WHERE deleted_at IS NULL`)
+	}
 }
 
 func parseProductSpec(raw sql.NullString) productSpecInfo {

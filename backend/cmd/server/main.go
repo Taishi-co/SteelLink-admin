@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/Taishi-co/SteelLink-admin/backend/internal/database"
+	"github.com/Taishi-co/SteelLink-admin/backend/internal/handler"
 	"github.com/Taishi-co/SteelLink-admin/backend/internal/router"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
@@ -27,6 +28,9 @@ func main() {
 			log.Printf("Failed to close MySQL: %v", err)
 		}
 	}()
+
+	handler.AutoMigrate(database.GetDB())
+	log.Println("Auto-migration completed")
 
 	// Create Gin engine
 	r := gin.Default()

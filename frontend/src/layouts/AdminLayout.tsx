@@ -9,6 +9,10 @@ import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   LogoutOutlined,
+  TeamOutlined,
+  SafetyOutlined,
+  MenuOutlined,
+  AppstoreOutlined,
 } from '@ant-design/icons'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../store/useAuthStore'
@@ -18,26 +22,47 @@ const { Header, Sider, Content } = Layout
 
 const menuItems = [
   { key: '/dashboard', icon: <DashboardOutlined />, label: '数据概览' },
-  { key: '/system/admin', icon: <SettingOutlined />, label: '管理员管理' },
-  { key: '/system/role', icon: <SettingOutlined />, label: '角色权限' },
-  { key: '/system/menu', icon: <SettingOutlined />, label: '菜单配置' },
-  { key: '/user', icon: <UserOutlined />, label: '用户管理' },
-  { key: '/enterprise', icon: <BankOutlined />, label: '企业审核' },
-  { key: '/product', icon: <ShoppingOutlined />, label: '商品管理' },
-  { key: '/product/order', icon: <ShoppingOutlined />, label: '订单管理' },
-  { key: '/product/category', icon: <ShoppingOutlined />, label: '类目配置' },
+  {
+    key: '/system',
+    icon: <SettingOutlined />,
+    label: '系统管理',
+    children: [
+      { key: '/system/admin', icon: <TeamOutlined />, label: '管理员管理' },
+      { key: '/system/role', icon: <SafetyOutlined />, label: '角色权限' },
+      { key: '/system/menu', icon: <MenuOutlined />, label: '菜单配置' },
+    ],
+  },
+  {
+    key: '/business',
+    icon: <UserOutlined />,
+    label: '业务管理',
+    children: [
+      { key: '/user', icon: <UserOutlined />, label: '用户管理' },
+      { key: '/enterprise', icon: <BankOutlined />, label: '企业审核' },
+    ],
+  },
+  {
+    key: '/product-center',
+    icon: <ShoppingOutlined />,
+    label: '商品中心',
+    children: [
+      { key: '/product', icon: <AppstoreOutlined />, label: '商品管理' },
+      { key: '/product/order', icon: <ShoppingOutlined />, label: '订单管理' },
+      { key: '/product/category', icon: <AppstoreOutlined />, label: '类目配置' },
+    ],
+  },
 ]
 
 const pageMeta: Record<string, { title: string; description: string }> = {
-  '/dashboard': { title: '数据概览', description: '查看平台用户、企业、商品与待处理事项总览。' },
-  '/system/admin': { title: '管理员管理', description: '维护管理账号、身份信息与后台访问权限。' },
-  '/system/role': { title: '角色权限', description: '配置角色分工与平台功能权限边界。' },
-  '/system/menu': { title: '菜单配置', description: '梳理运营后台导航结构与功能入口。' },
-  '/user': { title: '用户管理', description: '统一查看平台注册用户、联系方式与状态。' },
-  '/enterprise': { title: '企业审核', description: '跟踪入驻企业资料、认证状态与联系人信息。' },
-  '/product': { title: '商品管理', description: '审核平台商品、库存与销售基础信息。' },
-  '/product/order': { title: '订单管理', description: '查看交易订单、履约状态与凭证情况。' },
-  '/product/category': { title: '类目配置', description: '管理商品类目结构，为卖家发布提供标准。' },
+  '/dashboard': { title: '数据概览', description: '平台数据总览与待办事项' },
+  '/system/admin': { title: '管理员管理', description: '管理后台账号与权限' },
+  '/system/role': { title: '角色权限', description: '角色与功能权限配置' },
+  '/system/menu': { title: '菜单配置', description: '导航结构与功能入口' },
+  '/user': { title: '用户管理', description: '平台注册用户管理' },
+  '/enterprise': { title: '企业审核', description: '入驻企业资质审核' },
+  '/product': { title: '商品管理', description: '商品信息与审核管理' },
+  '/product/order': { title: '订单管理', description: '交易订单与履约管理' },
+  '/product/category': { title: '类目配置', description: '商品类目结构管理' },
 }
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -49,6 +74,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     token: { colorBgContainer, borderRadiusLG },
   } = theme.useToken()
   const currentMeta = pageMeta[location.pathname] ?? pageMeta['/dashboard']
+
+  const getOpenKeys = () => {
+    const path = location.pathname
+    if (path.startsWith('/system')) return ['/system']
+    if (path === '/user' || path === '/enterprise') return ['/business']
+    if (path.startsWith('/product')) return ['/product-center']
+    return []
+  }
 
   const handleMenuClick = ({ key }: { key: string }) => {
     navigate(key)
@@ -83,13 +116,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           theme="dark"
           mode="inline"
           selectedKeys={[location.pathname]}
+          defaultOpenKeys={getOpenKeys()}
           items={menuItems}
           onClick={handleMenuClick}
         />
       </Sider>
       <Layout>
         <Header className={styles.header} style={{ background: colorBgContainer }}>
-          <div className={styles.userInfo}>
+          <div className={styles.headerLeft}>
             <Button
               type="text"
               icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
@@ -101,16 +135,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               <div className={styles.pageDesc}>{currentMeta.description}</div>
             </div>
           </div>
-          <div className={styles.userInfo}>
+          <div className={styles.headerRight}>
             <div className={styles.statusPill}>
               <span className={styles.statusDot} />
-              平台服务正常
+              服务正常
             </div>
             <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
               <div className={styles.userAvatar}>
-                <Avatar icon={<UserOutlined />} />
+                <Avatar size="small" icon={<UserOutlined />} />
                 <span className={styles.userName}>
-                  {adminInfo?.realName === 'Platform Admin' ? '平台管理员' : (adminInfo?.realName || '管理员')}
+                  {adminInfo?.realName === 'Platform Admin' ? '管理员' : (adminInfo?.realName || '管理员')}
                 </span>
               </div>
             </Dropdown>

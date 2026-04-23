@@ -50,6 +50,8 @@ func RegisterRoutes(r *gin.Engine) {
 			protected.POST("/roles", handler.CreateRole)
 			protected.PUT("/roles/:id", handler.UpdateRole)
 			protected.DELETE("/roles/:id", handler.DeleteRole)
+			protected.GET("/roles/:id/menus", handler.GetRoleMenus)
+			protected.PUT("/roles/:id/menus", handler.UpdateRoleMenus)
 
 			// Menu routes
 			protected.GET("/menus", handler.ListMenus)
