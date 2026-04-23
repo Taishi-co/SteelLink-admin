@@ -27,6 +27,12 @@ const statusMeta = {
   2: { color: 'red', text: '已驳回' },
 } as const
 
+const marketplaceVisibilityMeta = {
+  0: { color: 'gold', text: '待审核，商城暂不可见' },
+  1: { color: 'green', text: '审核通过，商城可见' },
+  2: { color: 'red', text: '审核驳回，商城不可见' },
+} as const
+
 export default function ProductList() {
   const [params, setParams] = useState<PageParams>({ page: 1, pageSize: 10 })
   const [selectedId, setSelectedId] = useState<number | null>(null)
@@ -51,8 +57,12 @@ export default function ProductList() {
   const { mutate: auditProduct, isPending: auditSubmitting } = useMutation({
     mutationFn: ({ id, values }: { id: number; values: { status: number; auditRemark?: string } }) =>
       productApi.audit(id, values),
-    onSuccess: () => {
-      message.success('商品审核结果已更新')
+    onSuccess: (_, variables) => {
+      message.success(
+        variables.values.status === 1
+          ? '商品审核已通过，当前已进入商城展示范围'
+          : '商品已驳回，当前不会进入商城展示',
+      )
       setAuditTarget(null)
       auditForm.resetFields()
       void queryClient.invalidateQueries({ queryKey: ['products'] })
@@ -170,16 +180,39 @@ export default function ProductList() {
         ) : (
           <Descriptions bordered column={1} size="small">
             <Descriptions.Item label="商品名称">{detail?.name || '-'}</Descriptions.Item>
+            <Descriptions.Item label="主品类">{detail?.category || '-'}</Descriptions.Item>
+            <Descriptions.Item label="子品类">{detail?.subCategory || '-'}</Descriptions.Item>
+            <Descriptions.Item label="钢厂">{detail?.steelMill || '-'}</Descriptions.Item>
             <Descriptions.Item label="规格">{detail?.spec || '-'}</Descriptions.Item>
+            <Descriptions.Item label="材质">{detail?.material || '-'}</Descriptions.Item>
             <Descriptions.Item label="单位">{detail?.unit || '-'}</Descriptions.Item>
             <Descriptions.Item label="价格">
               {detail ? `¥${Number(detail.price ?? 0).toFixed(2)}` : '-'}
             </Descriptions.Item>
             <Descriptions.Item label="库存">{detail?.stock ?? '-'}</Descriptions.Item>
+            <Descriptions.Item label="最小起订量">{detail?.minOrderQty ?? '-'}</Descriptions.Item>
+            <Descriptions.Item label="交货周期">{detail?.deliveryDays ? `${detail.deliveryDays} 天` : '-'}</Descriptions.Item>
+            <Descriptions.Item label="报价有效期">{detail?.quoteValidity ? `${detail.quoteValidity} 小时` : '-'}</Descriptions.Item>
+            <Descriptions.Item label="捆包号">{detail?.bundleNo || '-'}</Descriptions.Item>
+            <Descriptions.Item label="仓库名称">{detail?.warehouseName || '-'}</Descriptions.Item>
+            <Descriptions.Item label="仓库编码">{detail?.warehouseCode || '-'}</Descriptions.Item>
+            <Descriptions.Item label="仓库地区">
+              {[detail?.province, detail?.city, detail?.district].filter(Boolean).join(' / ') || '-'}
+            </Descriptions.Item>
+            <Descriptions.Item label="仓库地址">{detail?.address || '-'}</Descriptions.Item>
             <Descriptions.Item label="审核状态">
               {detail ? (
                 <Tag color={statusMeta[detail.status as 0 | 1 | 2]?.color ?? statusMeta[0].color}>
                   {statusMeta[detail.status as 0 | 1 | 2]?.text ?? statusMeta[0].text}
+                </Tag>
+              ) : (
+                '-'
+              )}
+            </Descriptions.Item>
+            <Descriptions.Item label="商城展示状态">
+              {detail ? (
+                <Tag color={marketplaceVisibilityMeta[detail.status as 0 | 1 | 2]?.color ?? marketplaceVisibilityMeta[0].color}>
+                  {marketplaceVisibilityMeta[detail.status as 0 | 1 | 2]?.text ?? marketplaceVisibilityMeta[0].text}
                 </Tag>
               ) : (
                 '-'
