@@ -1142,7 +1142,7 @@ func ListProducts(c *gin.Context) {
 	})
 }
 
-// ListOrders returns list of orders
+// ListOrders returns list of orders with search support
 func ListOrders(c *gin.Context) {
 	db := database.GetDB()
 	if db == nil {
@@ -1154,21 +1154,45 @@ func ListOrders(c *gin.Context) {
 	defer cancel()
 	limit, offset := parsePageParams(c.Query("page"), c.Query("pageSize"))
 
-	total, err := queryCount(ctx, db, `SELECT COUNT(*) FROM orders WHERE deleted_at IS NULL`)
+	where := "deleted_at IS NULL"
+	args := make([]any, 0)
+
+	if keyword := c.Query("keyword"); keyword != "" {
+		where += " AND (order_no LIKE ? OR COALESCE(buyer_name,'') LIKE ? OR COALESCE(seller_name,'') LIKE ?)"
+		kw := "%" + keyword + "%"
+		args = append(args, kw, kw, kw)
+	}
+	if buyerID := c.Query("buyerId"); buyerID != "" {
+		where += " AND buyer_id = ?"
+		args = append(args, buyerID)
+	}
+	if sellerID := c.Query("sellerId"); sellerID != "" {
+		where += " AND (seller_id = ? OR seller_enterprise_id = ?)"
+		args = append(args, sellerID, sellerID)
+	}
+	if status := c.Query("status"); status != "" {
+		where += " AND status = ?"
+		args = append(args, status)
+	}
+
+	countArgs := make([]any, len(args))
+	copy(countArgs, args)
+	total, err := queryCount(ctx, db, fmt.Sprintf(`SELECT COUNT(*) FROM orders WHERE %s`, where), countArgs...)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 		return
 	}
 
-	rows, err := db.QueryContext(ctx, `
+	queryArgs := append(args, limit, offset)
+	rows, err := db.QueryContext(ctx, fmt.Sprintf(`
 		SELECT id, order_no, buyer_id, COALESCE(buyer_name, ''), seller_id, COALESCE(seller_enterprise_id, 0),
 		       COALESCE(seller_name, ''), COALESCE(total_quantity, 0), COALESCE(total_amount, 0),
 		       COALESCE(tax_total_amount, 0), COALESCE(currency, 'CNY'), status,
 		       COALESCE(delivery_voucher, ''), COALESCE(receipt_voucher, ''), receipt_at, expires_at, created_at
 		FROM orders
-		WHERE deleted_at IS NULL
+		WHERE %s
 		ORDER BY id DESC
-		LIMIT ? OFFSET ?`, limit, offset)
+		LIMIT ? OFFSET ?`, where), queryArgs...)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 		return
