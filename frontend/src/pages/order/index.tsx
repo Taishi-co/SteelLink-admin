@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Card, Table, Tag, Typography } from 'antd'
+import { Card, Table, Tag, Timeline, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { useQuery } from '@tanstack/react-query'
 import { orderApi, OrderItem, PageParams } from '../../services/api'
@@ -14,8 +14,16 @@ const orderStatusMeta: Record<number, { color: string; text: string }> = {
   4: { color: 'cyan', text: '待收款确认' },
   5: { color: 'purple', text: '待提货' },
   6: { color: 'processing', text: '配送中' },
-  7: { color: 'red', text: '已取消' },
+  7: { color: 'green', text: '已送达' },
   8: { color: 'green', text: '已完成' },
+  9: { color: 'red', text: '已取消' },
+}
+
+function timelineColor(status: string) {
+  if (status === 'completed') return 'green'
+  if (status === 'current') return 'blue'
+  if (status === 'skipped') return 'gray'
+  return 'gray'
 }
 
 export default function OrderList() {
@@ -72,6 +80,22 @@ export default function OrderList() {
         dataSource={data?.data.data.list || []}
         rowKey="id"
         loading={isLoading}
+        expandable={{
+          expandedRowRender: (record) => (
+            <Timeline
+              items={(record.timeline || []).map((item) => ({
+                color: timelineColor(item.status),
+                children: (
+                  <div>
+                    <div style={{ fontWeight: 500 }}>{item.label}</div>
+                    {item.time ? <Text type="secondary">{new Date(item.time).toLocaleString()}</Text> : null}
+                    {item.description ? <div><Text type="secondary">{item.description}</Text></div> : null}
+                  </div>
+                ),
+              }))}
+            />
+          ),
+        }}
         pagination={{
           current: params.page,
           pageSize: params.pageSize,

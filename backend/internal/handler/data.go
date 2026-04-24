@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -96,55 +97,64 @@ type enterpriseItem struct {
 }
 
 type productItem struct {
-	ID           int64      `json:"id"`
-	Name         string     `json:"name"`
-	CategoryID   *int64     `json:"categoryId,omitempty"`
-	EnterpriseID int64      `json:"enterpriseId"`
-	Category     string     `json:"category,omitempty"`
-	SubCategory  string     `json:"subCategory,omitempty"`
-	SteelMill    string     `json:"steelMill,omitempty"`
-	Spec         string     `json:"spec,omitempty"`
-	Material     string     `json:"material,omitempty"`
-	WarehouseName string    `json:"warehouseName,omitempty"`
-	WarehouseCode string    `json:"warehouseCode,omitempty"`
-	Province     string     `json:"province,omitempty"`
-	City         string     `json:"city,omitempty"`
-	District     string     `json:"district,omitempty"`
-	Address      string     `json:"address,omitempty"`
-	BundleNo     string     `json:"bundleNo,omitempty"`
-	Unit         string     `json:"unit,omitempty"`
-	Price        float64    `json:"price"`
-	Stock        float64    `json:"stock"`
-	MinOrderQty  float64    `json:"minOrderQty"`
-	DeliveryDays int        `json:"deliveryDays"`
-	QuoteValidity int       `json:"quoteValidity"`
-	Description  string     `json:"description,omitempty"`
-	Images       []string   `json:"images,omitempty"`
-	Status       int        `json:"status"`
-	AuditRemark  string     `json:"auditRemark,omitempty"`
-	AuditedAt    *time.Time `json:"auditedAt,omitempty"`
-	CreatedAt    time.Time  `json:"createdAt"`
-	UpdatedAt    time.Time  `json:"updatedAt"`
+	ID            int64      `json:"id"`
+	Name          string     `json:"name"`
+	CategoryID    *int64     `json:"categoryId,omitempty"`
+	EnterpriseID  int64      `json:"enterpriseId"`
+	Category      string     `json:"category,omitempty"`
+	SubCategory   string     `json:"subCategory,omitempty"`
+	SteelMill     string     `json:"steelMill,omitempty"`
+	Spec          string     `json:"spec,omitempty"`
+	Material      string     `json:"material,omitempty"`
+	WarehouseName string     `json:"warehouseName,omitempty"`
+	WarehouseCode string     `json:"warehouseCode,omitempty"`
+	Province      string     `json:"province,omitempty"`
+	City          string     `json:"city,omitempty"`
+	District      string     `json:"district,omitempty"`
+	Address       string     `json:"address,omitempty"`
+	BundleNo      string     `json:"bundleNo,omitempty"`
+	Unit          string     `json:"unit,omitempty"`
+	Price         float64    `json:"price"`
+	Stock         float64    `json:"stock"`
+	MinOrderQty   float64    `json:"minOrderQty"`
+	DeliveryDays  int        `json:"deliveryDays"`
+	QuoteValidity int        `json:"quoteValidity"`
+	Description   string     `json:"description,omitempty"`
+	Images        []string   `json:"images,omitempty"`
+	Status        int        `json:"status"`
+	AuditRemark   string     `json:"auditRemark,omitempty"`
+	AuditedAt     *time.Time `json:"auditedAt,omitempty"`
+	CreatedAt     time.Time  `json:"createdAt"`
+	UpdatedAt     time.Time  `json:"updatedAt"`
 }
 
 type orderItem struct {
-	ID                 int64      `json:"id"`
-	OrderNo            string     `json:"orderNo"`
-	BuyerID            int64      `json:"buyerId"`
-	BuyerName          string     `json:"buyerName"`
-	SellerID           int64      `json:"sellerId"`
-	SellerEnterpriseID int64      `json:"sellerEnterpriseId"`
-	SellerName         string     `json:"sellerName"`
-	TotalQuantity      float64    `json:"totalQuantity"`
-	TotalAmount        float64    `json:"totalAmount"`
-	TaxTotalAmount     float64    `json:"taxTotalAmount"`
-	Currency           string     `json:"currency"`
-	Status             int        `json:"status"`
-	DeliveryVoucher    string     `json:"deliveryVoucher,omitempty"`
-	ReceiptVoucher     string     `json:"receiptVoucher,omitempty"`
-	ReceiptAt          *time.Time `json:"receiptAt,omitempty"`
-	ExpiresAt          *time.Time `json:"expiresAt,omitempty"`
-	CreatedAt          time.Time  `json:"createdAt"`
+	ID                 int64               `json:"id"`
+	OrderNo            string              `json:"orderNo"`
+	BuyerID            int64               `json:"buyerId"`
+	BuyerName          string              `json:"buyerName"`
+	SellerID           int64               `json:"sellerId"`
+	SellerEnterpriseID int64               `json:"sellerEnterpriseId"`
+	SellerName         string              `json:"sellerName"`
+	TotalQuantity      float64             `json:"totalQuantity"`
+	TotalAmount        float64             `json:"totalAmount"`
+	TaxTotalAmount     float64             `json:"taxTotalAmount"`
+	Currency           string              `json:"currency"`
+	Status             int                 `json:"status"`
+	DeliveryVoucher    string              `json:"deliveryVoucher,omitempty"`
+	ReceiptVoucher     string              `json:"receiptVoucher,omitempty"`
+	ReceiptAt          *time.Time          `json:"receiptAt,omitempty"`
+	ExpiresAt          *time.Time          `json:"expiresAt,omitempty"`
+	CreatedAt          time.Time           `json:"createdAt"`
+	Timeline           []orderTimelineItem `json:"timeline"`
+}
+
+type orderTimelineItem struct {
+	Key         string     `json:"key"`
+	Label       string     `json:"label"`
+	Status      string     `json:"status"`
+	Time        *time.Time `json:"time,omitempty"`
+	Description string     `json:"description,omitempty"`
 }
 
 type categoryItem struct {
@@ -182,11 +192,11 @@ type roleMenusRequest struct {
 }
 
 type enterpriseVerificationInfo struct {
-	LegalPerson    string `json:"legal_person"`
+	LegalPerson     string `json:"legal_person"`
 	BusinessLicense string `json:"business_license"`
-	ContactName    string `json:"contact_name"`
-	ContactPhone   string `json:"contact_phone"`
-	Address        string `json:"address"`
+	ContactName     string `json:"contact_name"`
+	ContactPhone    string `json:"contact_phone"`
+	Address         string `json:"address"`
 }
 
 type productSpecInfo struct {
@@ -250,7 +260,23 @@ func columnExists(ctx context.Context, db *sql.DB, table, column string) bool {
 	return err == nil && exists > 0
 }
 
+func mapProductIntStatus(raw int) int {
+	switch raw {
+	case 2:
+		return 1
+	case 3:
+		return 1
+	case 4:
+		return 2
+	default:
+		return 0
+	}
+}
+
 func mapProductStatus(raw string) int {
+	if v, err := strconv.Atoi(raw); err == nil {
+		return mapProductIntStatus(v)
+	}
 	switch strings.ToLower(raw) {
 	case "2", "approved":
 		return 1
@@ -288,10 +314,12 @@ func mapOrderStatus(raw string) int {
 		return 5
 	case "shipped":
 		return 6
-	case "cancelled":
+	case "delivered":
 		return 7
 	case "completed":
 		return 8
+	case "cancelled":
+		return 9
 	default:
 		return 0
 	}

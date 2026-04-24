@@ -218,6 +218,15 @@ export interface OrderItem {
   receiptAt?: string
   expiresAt?: string
   createdAt: string
+  timeline?: OrderTimelineItem[]
+}
+
+export interface OrderTimelineItem {
+  key: string
+  label: string
+  status: string
+  time?: string
+  description?: string
 }
 
 export const orderApi = {
