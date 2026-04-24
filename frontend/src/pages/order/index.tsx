@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { Card, Table, Tag, Input, Select, Space, Button, Modal, Descriptions, Drawer, Spin, Typography } from 'antd'
+import { Card, Table, Tag, Input, Select, Space, Button, Modal, Descriptions, Drawer, Spin, Typography, Timeline } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { useQuery } from '@tanstack/react-query'
-import { orderApi, OrderItem, PageParams } from '../../services/api'
+import { orderApi, OrderItem, OrderTimelineItem, PageParams } from '../../services/api'
 import { formatDateTime } from '../../utils/format'
 import { EyeOutlined, SearchOutlined } from '@ant-design/icons'
 
@@ -16,8 +16,16 @@ const orderStatusMeta: Record<number, { color: string; text: string }> = {
   4: { color: 'cyan', text: '待收款确认' },
   5: { color: 'purple', text: '待提货' },
   6: { color: 'processing', text: '配送中' },
-  7: { color: 'red', text: '已取消' },
+  7: { color: 'green', text: '已送达' },
   8: { color: 'green', text: '已完成' },
+  9: { color: 'red', text: '已取消' },
+}
+
+function timelineColor(status: string) {
+  if (status === 'completed') return 'green'
+  if (status === 'current') return 'blue'
+  if (status === 'skipped') return 'gray'
+  return 'gray'
 }
 
 const statusOptions = [
@@ -118,6 +126,22 @@ export default function OrderList() {
           rowKey="id"
           loading={isLoading}
           scroll={{ x: 1200 }}
+          expandable={{
+            expandedRowRender: (record) => (
+              <Timeline
+                items={(record.timeline || []).map((item: OrderTimelineItem) => ({
+                  color: timelineColor(item.status),
+                  children: (
+                    <div>
+                      <div style={{ fontWeight: 500 }}>{item.label}</div>
+                      {item.time ? <Text type="secondary">{new Date(item.time).toLocaleString()}</Text> : null}
+                      {item.description ? <div><Text type="secondary">{item.description}</Text></div> : null}
+                    </div>
+                  ),
+                }))}
+              />
+            ),
+          }}
           pagination={{
             current: params.page,
             pageSize: params.pageSize,
@@ -169,6 +193,25 @@ export default function OrderList() {
               <Descriptions.Item label="签收凭证">{selectedOrder.receiptVoucher ? <Tag color="green">已上传</Tag> : <Tag>未上传</Tag>}</Descriptions.Item>
               <Descriptions.Item label="签收时间">{formatDateTime(selectedOrder.receiptAt)}</Descriptions.Item>
             </Descriptions>
+
+            {selectedOrder.timeline && selectedOrder.timeline.length > 0 && (
+              <div style={{ marginTop: 24 }}>
+                <Typography.Text strong style={{ fontSize: 14 }}>订单时间线</Typography.Text>
+                <Timeline
+                  style={{ marginTop: 12 }}
+                  items={selectedOrder.timeline.map((item: OrderTimelineItem) => ({
+                    color: timelineColor(item.status),
+                    children: (
+                      <div>
+                        <div style={{ fontWeight: 500 }}>{item.label}</div>
+                        {item.time ? <Text type="secondary">{new Date(item.time).toLocaleString()}</Text> : null}
+                        {item.description ? <div><Text type="secondary">{item.description}</Text></div> : null}
+                      </div>
+                    ),
+                  }))}
+                />
+              </div>
+            )}
           </>
         )}
       </Drawer>

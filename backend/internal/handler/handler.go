@@ -1105,8 +1105,11 @@ func ListProducts(c *gin.Context) {
 
 	queryArgs := append(append([]any{}, args...), limit, offset)
 	rows, err := db.QueryContext(ctx, fmt.Sprintf(`
-		SELECT id, name, enterprise_id, COALESCE(specs, ''), COALESCE(unit, ''), COALESCE(unit_price, price, 0),
-		       COALESCE(quantity, stock, 0), COALESCE(description, ''), image_urls, status, created_at, COALESCE(audit_remark, '')
+		SELECT id, name, enterprise_id, COALESCE(category, ''), COALESCE(sub_category, ''), COALESCE(steel_mill, ''),
+		       spec, warehouse_info, COALESCE(bundle_no, ''), COALESCE(product_no, ''),
+		       COALESCE(unit_price, 0), COALESCE(quantity, 0), COALESCE(min_order_qty, 0),
+		       COALESCE(delivery_days, 0), COALESCE(quote_validity, 0),
+		       COALESCE(description, ''), images, status, created_at, COALESCE(audit_remark, ''), approved_at, updated_at
 		FROM products
 		WHERE %s
 		ORDER BY id DESC
@@ -1120,17 +1123,42 @@ func ListProducts(c *gin.Context) {
 	items := make([]productItem, 0)
 	for rows.Next() {
 		var item productItem
-		var imageURLs sql.NullString
-		var rawStatus sql.NullString
+		var imageJSON sql.NullString
+		var rawSpec sql.NullString
+		var rawWarehouse sql.NullString
+		var rawStatus int
 		var auditRemark sql.NullString
-		if err := rows.Scan(&item.ID, &item.Name, &item.EnterpriseID, &item.Spec, &item.Unit, &item.Price, &item.Stock, &item.Description, &imageURLs, &rawStatus, &item.CreatedAt, &auditRemark); err != nil {
+		var auditedAt sql.NullTime
+		var updatedAt sql.NullTime
+		var productNo string
+		if err := rows.Scan(&item.ID, &item.Name, &item.EnterpriseID, &item.Category, &item.SubCategory, &item.SteelMill,
+			&rawSpec, &rawWarehouse, &item.BundleNo, &productNo,
+			&item.Price, &item.Stock, &item.MinOrderQty,
+			&item.DeliveryDays, &item.QuoteValidity,
+			&item.Description, &imageJSON, &rawStatus, &item.CreatedAt, &auditRemark, &auditedAt, &updatedAt); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 			return
 		}
-		item.Images = parseImages(imageURLs)
-		item.Status = mapProductStatus(rawStatus.String)
+		item.Images = parseImages(imageJSON)
+		item.Status = mapProductIntStatus(rawStatus)
+		specInfo := parseProductSpec(rawSpec)
+		item.Spec = specInfo.Spec
+		item.Material = specInfo.Material
+		warehouse := parseWarehouseInfo(rawWarehouse)
+		item.WarehouseName = warehouse.WarehouseName
+		item.WarehouseCode = warehouse.WarehouseCode
+		item.Province = warehouse.Province
+		item.City = warehouse.City
+		item.District = warehouse.District
+		item.Address = warehouse.Address
 		if auditRemark.Valid {
 			item.AuditRemark = auditRemark.String
+		}
+		if auditedAt.Valid {
+			item.AuditedAt = &auditedAt.Time
+		}
+		if updatedAt.Valid {
+			item.UpdatedAt = updatedAt.Time
 		}
 		items = append(items, item)
 	}
@@ -1202,7 +1230,6 @@ func ListOrders(c *gin.Context) {
 	items := make([]orderItem, 0)
 	for rows.Next() {
 		var item orderItem
-		var rawStatus sql.NullString
 		if err := rows.Scan(
 			&item.ID,
 			&item.OrderNo,
@@ -1215,7 +1242,7 @@ func ListOrders(c *gin.Context) {
 			&item.TotalAmount,
 			&item.TaxTotalAmount,
 			&item.Currency,
-			&rawStatus,
+			&item.Status,
 			&item.DeliveryVoucher,
 			&item.ReceiptVoucher,
 			&item.ReceiptAt,
@@ -1225,7 +1252,7 @@ func ListOrders(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 			return
 		}
-		item.Status = mapOrderStatus(rawStatus.String)
+		item.Timeline = buildOrderTimeline(item)
 		items = append(items, item)
 	}
 
@@ -1234,6 +1261,94 @@ func ListOrders(c *gin.Context) {
 		"message": "success",
 		"data":    pageResult[orderItem]{List: items, Total: total},
 	})
+}
+
+func buildOrderTimeline(order orderItem) []orderTimelineItem {
+	timeline := []orderTimelineItem{
+		{
+			Key:         "created",
+			Label:       "订单创建",
+			Status:      "completed",
+			Time:        &order.CreatedAt,
+			Description: "买家提交订单，系统锁定库存。",
+		},
+	}
+
+	if order.Status == 9 {
+		timeline = append(timeline,
+			orderTimelineItem{Key: "payment_uploaded", Label: "支付凭证上传", Status: "skipped", Description: "订单已关闭，未完成支付。"},
+			orderTimelineItem{Key: "closed", Label: "订单关闭", Status: "completed", Time: order.ExpiresAt, Description: "订单已关闭，锁定库存已释放。"},
+		)
+		return timeline
+	}
+
+	paymentStatus := "pending"
+	if order.Status == 4 {
+		paymentStatus = "current"
+	} else if order.Status >= 5 {
+		paymentStatus = "completed"
+	}
+	timeline = append(timeline, orderTimelineItem{
+		Key:         "payment_uploaded",
+		Label:       "支付凭证上传",
+		Status:      paymentStatus,
+		Description: "买家上传支付凭证后，卖家确认收款。",
+	})
+
+	confirmStatus := "pending"
+	if order.Status == 4 {
+		confirmStatus = "current"
+	} else if order.Status >= 5 {
+		confirmStatus = "completed"
+	}
+	timeline = append(timeline, orderTimelineItem{
+		Key:         "payment_confirmed",
+		Label:       "卖家确认收款",
+		Status:      confirmStatus,
+		Description: "卖家核对支付凭证并确认收款。",
+	})
+
+	pickupStatus := "pending"
+	if order.Status == 5 {
+		pickupStatus = "current"
+	} else if order.Status >= 6 {
+		pickupStatus = "completed"
+	}
+	timeline = append(timeline, orderTimelineItem{
+		Key:         "pickup_info",
+		Label:       "提货信息录入",
+		Status:      pickupStatus,
+		Description: "买家录入承运车辆、司机和送达地址。",
+	})
+
+	outboundStatus := "pending"
+	if order.Status == 5 {
+		outboundStatus = "current"
+	} else if order.Status >= 6 {
+		outboundStatus = "completed"
+	}
+	timeline = append(timeline, orderTimelineItem{
+		Key:         "outbound",
+		Label:       "卖家确认出库",
+		Status:      outboundStatus,
+		Description: "卖家核验提货码并确认货物出库。",
+	})
+
+	receiptStatus := "pending"
+	if order.Status == 6 || order.Status == 7 {
+		receiptStatus = "current"
+	} else if order.Status == 8 {
+		receiptStatus = "completed"
+	}
+	timeline = append(timeline, orderTimelineItem{
+		Key:         "receipt",
+		Label:       "买家确认收货",
+		Status:      receiptStatus,
+		Time:        order.ReceiptAt,
+		Description: "买家确认收货并上传签收凭证后，订单完成归档。",
+	})
+
+	return timeline
 }
 
 // GetProduct returns a single product
@@ -1248,45 +1363,43 @@ func GetProduct(c *gin.Context) {
 	defer cancel()
 
 	var item productItem
-	var imageURLs sql.NullString
-	var rawStatus string
+	var imageJSON sql.NullString
+	var rawStatus int
 	var auditRemark sql.NullString
 	var auditedAt sql.NullTime
 	var updatedAt sql.NullTime
 
 	row := db.QueryRowContext(ctx, `
 		SELECT id, name, enterprise_id, COALESCE(category, ''), COALESCE(sub_category, ''), COALESCE(steel_mill, ''),
-		       spec, warehouse_info, COALESCE(bundle_no, ''), COALESCE(unit, ''), COALESCE(unit_price, price, 0),
-		       COALESCE(quantity, stock, 0), COALESCE(min_order_qty, 0), COALESCE(delivery_days, 0), COALESCE(quote_validity, 0),
-		       COALESCE(description, ''), image_urls, status, COALESCE(audit_remark, ''), approved_at, created_at, updated_at
+		       spec, warehouse_info, COALESCE(bundle_no, ''), COALESCE(product_no, ''),
+		       COALESCE(unit_price, 0), COALESCE(quantity, 0), COALESCE(min_order_qty, 0),
+		       COALESCE(delivery_days, 0), COALESCE(quote_validity, 0),
+		       COALESCE(description, ''), images, status, COALESCE(audit_remark, ''), approved_at, created_at, updated_at
 		FROM products
 		WHERE deleted_at IS NULL AND id = ?
 		LIMIT 1`, c.Param("id"))
 
-	var category string
-	var subCategory string
-	var steelMill string
 	var rawSpec sql.NullString
 	var rawWarehouse sql.NullString
-	var bundleNo string
+	var productNo string
 	if err := row.Scan(
 		&item.ID,
 		&item.Name,
 		&item.EnterpriseID,
-		&category,
-		&subCategory,
-		&steelMill,
+		&item.Category,
+		&item.SubCategory,
+		&item.SteelMill,
 		&rawSpec,
 		&rawWarehouse,
-		&bundleNo,
-		&item.Unit,
+		&item.BundleNo,
+		&productNo,
 		&item.Price,
 		&item.Stock,
 		&item.MinOrderQty,
 		&item.DeliveryDays,
 		&item.QuoteValidity,
 		&item.Description,
-		&imageURLs,
+		&imageJSON,
 		&rawStatus,
 		&auditRemark,
 		&auditedAt,
@@ -1301,12 +1414,8 @@ func GetProduct(c *gin.Context) {
 		return
 	}
 
-	item.Images = parseImages(imageURLs)
-	item.Status = mapProductStatus(rawStatus)
-	item.Category = category
-	item.SubCategory = subCategory
-	item.SteelMill = steelMill
-	item.BundleNo = bundleNo
+	item.Images = parseImages(imageJSON)
+	item.Status = mapProductIntStatus(rawStatus)
 	specInfo := parseProductSpec(rawSpec)
 	item.Spec = specInfo.Spec
 	item.Material = specInfo.Material
@@ -1425,15 +1534,15 @@ func AuditProduct(c *gin.Context) {
 	}
 
 	if tableExists(ctx, db, "product_audit_logs") {
-		var skuID string
+		var productNo string
 		productID := int64(0)
 		fmt.Sscanf(c.Param("id"), "%d", &productID)
-		_ = db.QueryRowContext(ctx, `SELECT COALESCE(sku_id, '') FROM products WHERE id = ? LIMIT 1`, c.Param("id")).Scan(&skuID)
+		_ = db.QueryRowContext(ctx, `SELECT COALESCE(product_no, '') FROM products WHERE id = ? LIMIT 1`, c.Param("id")).Scan(&productNo)
 		if _, err := db.ExecContext(ctx, `
 			INSERT INTO product_audit_logs (product_id, product_sku_id, action, status, operator_id, operator_name, remark, created_at)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 			productID,
-			skuID,
+			productNo,
 			"platform_audit",
 			logStatus,
 			operatorID,
