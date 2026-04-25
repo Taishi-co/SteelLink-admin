@@ -32,7 +32,6 @@ SteelLink-admin/
 │   │   ├── services/        # API 服务
 │   │   ├── store/           # 状态管理
 │   │   └── styles/          # 样式
-│   ├── Dockerfile
 │   └── nginx.conf
 │
 ├── backend/                  # Go 后端
@@ -41,14 +40,13 @@ SteelLink-admin/
 │   │   ├── handler/         # HTTP handlers
 │   │   ├── middleware/      # 中间件
 │   │   └── router/          # 路由
-│   ├── config/              # 配置
-│   └── Dockerfile
+│   └── config/              # 配置
 │
 ├── scripts/
 │   └── init-db.sql          # 数据库初始化
 │
-├── docker-compose.prod.yml  # 生产部署配置
-└── Makefile                 # 常用命令
+├── Dockerfile.admin-backend # 后端容器镜像
+└── Dockerfile.admin-frontend # 前端容器镜像
 ```
 
 ## 功能模块
@@ -117,13 +115,12 @@ pnpm dev
 #### 1. 部署后端
 
 ```bash
-# 进入后端目录
-cd backend
+# 在仓库根目录执行
 
 # 构建镜像
-docker build -t steellink-admin-backend .
+docker build -f Dockerfile.admin-backend -t steellink-admin-backend .
 
-# 运行容器
+# 运行容器。生产和容器环境必须显式注入 DB_HOST，不能依赖 localhost 默认值。
 docker run -d \
   --name steellink-admin-backend \
   -p 6667:8080 \
@@ -143,11 +140,11 @@ docker logs -f steellink-admin-backend
 #### 2. 部署前端
 
 ```bash
-# 进入前端目录
-cd frontend
+# 在仓库根目录执行
 
 # 构建镜像（指定后端 API 地址）
 docker build \
+  -f Dockerfile.admin-frontend \
   --build-arg VITE_API_BASE_URL=http://117.72.123.14:6667/api/v1 \
   -t steellink-admin-frontend .
 
@@ -186,7 +183,7 @@ docker rm steellink-admin-frontend
 docker rm steellink-admin-backend
 
 # 重新部署
-docker build -t steellink-admin-frontend . --no-cache
+docker build -f Dockerfile.admin-frontend -t steellink-admin-frontend . --no-cache
 docker run -d --name steellink-admin-frontend -p 6666:80 steellink-admin-frontend
 ```
 
