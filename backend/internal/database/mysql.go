@@ -13,15 +13,27 @@ import (
 
 var db *sql.DB
 
+type mysqlConfig struct {
+	host     string
+	port     int
+	user     string
+	password string
+	name     string
+}
+
+var isContainerRuntime = func() bool {
+	_, err := os.Stat("/.dockerenv")
+	return err == nil
+}
+
 func InitMySQL() error {
-	host := getEnv("DB_HOST", "localhost")
-	port := getEnvInt("DB_PORT", 3306)
-	user := getEnv("DB_USER", "root")
-	password := os.Getenv("DB_PASSWORD")
-	name := getEnv("DB_NAME", "steellink")
+	cfg, err := loadMySQLConfig()
+	if err != nil {
+		return err
+	}
 
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=True&loc=Local&timeout=10s",
-		user, password, host, port, name,
+		cfg.user, cfg.password, cfg.host, cfg.port, cfg.name,
 	)
 
 	conn, err := sql.Open("mysql", dsn)
@@ -67,11 +79,38 @@ func CloseMySQL() error {
 	return db.Close()
 }
 
+func loadMySQLConfig() (mysqlConfig, error) {
+	host, hostSet := lookupEnv("DB_HOST", "localhost")
+	if requiresExplicitDBHost() && !hostSet {
+		return mysqlConfig{}, fmt.Errorf("DB_HOST is required when GIN_MODE=release or running in a container; pass DB_HOST with docker -e or --env-file")
+	}
+
+	return mysqlConfig{
+		host:     host,
+		port:     getEnvInt("DB_PORT", 3306),
+		user:     getEnv("DB_USER", "root"),
+		password: os.Getenv("DB_PASSWORD"),
+		name:     getEnv("DB_NAME", "steellink"),
+	}, nil
+}
+
+func requiresExplicitDBHost() bool {
+	return os.Getenv("GIN_MODE") == "release" || isContainerRuntime()
+}
+
 func getEnv(key, fallback string) string {
-	if value := os.Getenv(key); value != "" {
+	value, ok := lookupEnv(key, fallback)
+	if ok {
 		return value
 	}
 	return fallback
+}
+
+func lookupEnv(key, fallback string) (string, bool) {
+	if value := os.Getenv(key); value != "" {
+		return value, true
+	}
+	return fallback, false
 }
 
 func getEnvInt(key string, fallback int) int {
