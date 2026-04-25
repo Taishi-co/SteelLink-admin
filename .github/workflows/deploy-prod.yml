@@ -1,0 +1,41 @@
+name: Deploy Production
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy admin to production
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Run deployment scripts on production server
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          PROD_BACKEND_DEPLOY_COMMAND: ${{ secrets.PROD_BACKEND_DEPLOY_COMMAND }}
+          PROD_FRONTEND_DEPLOY_COMMAND: ${{ secrets.PROD_FRONTEND_DEPLOY_COMMAND }}
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          password: ${{ secrets.PROD_PASSWORD }}
+          envs: PROD_BACKEND_DEPLOY_COMMAND,PROD_FRONTEND_DEPLOY_COMMAND
+          script: |
+            set -euo pipefail
+
+            backend_deploy_command="${PROD_BACKEND_DEPLOY_COMMAND:-/root/deploy_admin_backend}"
+            frontend_deploy_command="${PROD_FRONTEND_DEPLOY_COMMAND:-/root/deploy_admin_frontend}"
+
+            echo "Deploying admin backend"
+            bash -lc "${backend_deploy_command}"
+
+            echo "Deploying admin frontend"
+            bash -lc "${frontend_deploy_command}"
