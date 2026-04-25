@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/gin-gonic/gin"
 )
 
 type pageResult[T any] struct {
@@ -211,6 +213,54 @@ type warehouseInfo struct {
 	City          string `json:"city"`
 	District      string `json:"district"`
 	Address       string `json:"address"`
+}
+
+type operationLogItem struct {
+	ID           int64     `json:"id"`
+	AdminID      int64     `json:"adminId"`
+	AdminName    string    `json:"adminName"`
+	Module       string    `json:"module"`
+	Action       string    `json:"action"`
+	Method       string    `json:"method"`
+	Path         string    `json:"path"`
+	IP           string    `json:"ip"`
+	RequestBody  string    `json:"requestBody,omitempty"`
+	ResponseCode int       `json:"responseCode"`
+	CreatedAt    time.Time `json:"createdAt"`
+}
+
+func logOperation(ctx context.Context, db *sql.DB, adminID int64, adminName, module, action, method, path, ip, requestBody string, responseCode int) {
+	if !tableExists(ctx, db, "admin_operation_logs") {
+		return
+	}
+	db.ExecContext(ctx, `
+		INSERT INTO admin_operation_logs (admin_id, admin_name, module, action, method, path, ip, request_body, response_code, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		adminID, adminName, module, action, method, path, ip, requestBody, responseCode, time.Now())
+}
+
+func logOpFromContext(c *gin.Context, db *sql.DB, module, action string, responseCode int, reqBody ...string) {
+	adminID, _ := c.Get("admin_id")
+	adminName, _ := c.Get("admin_real_name")
+	var aid int64
+	switch v := adminID.(type) {
+	case int64:
+		aid = v
+	case int:
+		aid = int64(v)
+	case float64:
+		aid = int64(v)
+	}
+	name, _ := adminName.(string)
+	ip := c.ClientIP()
+	body := ""
+	if len(reqBody) > 0 {
+		body = reqBody[0]
+		if len(body) > 2000 {
+			body = body[:2000]
+		}
+	}
+	logOperation(c.Request.Context(), db, aid, name, module, action, c.Request.Method, c.Request.URL.Path, ip, body, responseCode)
 }
 
 func parsePageParams(pageStr, pageSizeStr string) (limit, offset int) {

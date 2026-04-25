@@ -143,6 +143,11 @@ func Login(c *gin.Context) {
 			},
 		},
 	})
+
+	db := database.GetDB()
+	if db != nil {
+		logOperation(c.Request.Context(), db, 1, defaultAdminUsername(), "auth", "login", "POST", c.Request.URL.Path, c.ClientIP(), "", 0)
+	}
 }
 
 // Logout clears current session on client side
@@ -292,6 +297,7 @@ func CreateAdmin(c *gin.Context) {
 			return
 		}
 		id, _ := result.LastInsertId()
+		logOpFromContext(c, db, "admin", "create", 0, fmt.Sprintf(`{"username":"%s","realName":"%s"}`, req.Username, req.RealName))
 		c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": adminItem{
 			ID:        id,
 			Username:  req.Username,
@@ -344,6 +350,7 @@ func UpdateAdmin(c *gin.Context) {
 			c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "admin not found"})
 			return
 		}
+		logOpFromContext(c, db, "admin", "update", 0, fmt.Sprintf(`{"id":"%s","username":"%s"}`, c.Param("id"), req.Username))
 		GetAdmin(c)
 		return
 	}
@@ -376,6 +383,7 @@ func DeleteAdmin(c *gin.Context) {
 			c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "admin not found"})
 			return
 		}
+		logOpFromContext(c, db, "admin", "delete", 0, fmt.Sprintf(`{"id":"%s"}`, c.Param("id")))
 		c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": true})
 		return
 	}
@@ -857,15 +865,92 @@ func ListUsers(c *gin.Context) {
 
 // GetUser returns a single user
 func GetUser(c *gin.Context) {
+	db := database.GetDB()
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	id := c.Param("id")
+	hasEnterpriseID := columnExists(ctx, db, "users", "enterprise_id")
+	hasRealName := columnExists(ctx, db, "users", "real_name")
+
+	query := `SELECT id, username, COALESCE(phone, ''), COALESCE(email, ''), status, created_at`
+	if hasEnterpriseID {
+		query += `, enterprise_id`
+	}
+	if hasRealName {
+		query += `, COALESCE(real_name, '')`
+	}
+	query += ` FROM users WHERE deleted_at IS NULL AND id = ? LIMIT 1`
+
+	row := db.QueryRowContext(ctx, query, id)
+
+	var item userItem
+	var realName sql.NullString
+	scanTargets := []any{&item.ID, &item.Username, &item.Phone, &item.Email, &item.Status, &item.CreatedAt}
+	if hasEnterpriseID {
+		scanTargets = append(scanTargets, &item.EnterpriseID)
+	}
+	if hasRealName {
+		scanTargets = append(scanTargets, &realName)
+	}
+
+	if err := row.Scan(scanTargets...); err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "用户不存在"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+
+	if hasRealName && realName.Valid && realName.String != "" {
+		item.RealName = realName.String
+	} else if item.RealName == "" {
+		item.RealName = item.Username
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
 		"message": "success",
-		"data":    nil,
+		"data":    item,
 	})
 }
 
 // UpdateUserStatus updates user status
 func UpdateUserStatus(c *gin.Context) {
+	db := database.GetDB()
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	id := c.Param("id")
+
+	var req struct {
+		Status int `json:"status"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		return
+	}
+
+	if req.Status != 0 && req.Status != 1 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "状态值无效，仅支持 0(停用) 或 1(启用)"})
+		return
+	}
+
+	result, err := db.ExecContext(ctx, `UPDATE users SET status = ?, updated_at = NOW() WHERE deleted_at IS NULL AND id = ?`, req.Status, id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "用户不存在"})
+		return
+	}
+
+	logOpFromContext(c, db, "user", "update_status", 0, fmt.Sprintf(`{"id":"%s","status":%d}`, id, req.Status))
+
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
 		"message": "success",
@@ -1063,6 +1148,8 @@ func AuditEnterprise(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "enterprise not found"})
 		return
 	}
+
+	logOpFromContext(c, db, "enterprise", "audit", 0, fmt.Sprintf(`{"id":"%s","status":%d}`, c.Param("id"), req.Status))
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
@@ -1554,6 +1641,8 @@ func AuditProduct(c *gin.Context) {
 			return
 		}
 	}
+
+	logOpFromContext(c, db, "product", "audit", 0, fmt.Sprintf(`{"id":"%s","status":%d}`, c.Param("id"), req.Status))
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
