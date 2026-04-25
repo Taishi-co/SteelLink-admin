@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, type Key } from 'react'
 import { Card, Table, Button, Space, Tag, Popconfirm, message, Modal, Form, Input, Select, InputNumber, Tree } from 'antd'
+import type { TreeDataNode } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined, SafetyOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -28,7 +29,7 @@ function buildMenuTree(menus: MenuItem[]): MenuItem[] {
   return roots
 }
 
-function menuToTreeData(menus: MenuItem[]): any[] {
+function menuToTreeData(menus: MenuItem[]): TreeDataNode[] {
   return menus.map(m => ({
     title: m.name,
     key: m.id,
@@ -42,7 +43,7 @@ export default function RoleList() {
   const [permModalOpen, setPermModalOpen] = useState(false)
   const [editingRole, setEditingRole] = useState<RoleItem | null>(null)
   const [permRoleId, setPermRoleId] = useState<number | null>(null)
-  const [checkedMenuIds, setCheckedMenuIds] = useState<number[]>([])
+  const [checkedMenuIds, setCheckedMenuIds] = useState<Key[]>([])
   const [form] = Form.useForm<RoleFormValues>()
   const queryClient = useQueryClient()
 
@@ -217,7 +218,7 @@ export default function RoleList() {
         title="分配菜单权限"
         open={permModalOpen}
         onCancel={() => setPermModalOpen(false)}
-        onOk={() => permRoleId && saveMenus({ id: permRoleId, menuIds: checkedMenuIds })}
+        onOk={() => permRoleId && saveMenus({ id: permRoleId, menuIds: checkedMenuIds.map((key) => Number(key)) })}
         okText="保存"
         confirmLoading={savingMenus}
         destroyOnHidden
@@ -227,7 +228,7 @@ export default function RoleList() {
           defaultExpandAll
           treeData={treeData}
           checkedKeys={checkedMenuIds}
-          onCheck={(checked) => setCheckedMenuIds((checked as number[]))}
+          onCheck={(checked) => setCheckedMenuIds(Array.isArray(checked) ? checked : checked.checked)}
         />
       </Modal>
     </>
