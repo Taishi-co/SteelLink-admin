@@ -17,7 +17,7 @@
 1. 新建 feature 文档，记录自动部署的触发条件、Secrets、影响范围与验收标准。
 2. 新增 GitHub Actions workflow，监听 `main` 分支 push 与手动触发。
 3. 在 workflow 中通过 SSH 登录服务器，支持私钥或密码认证。
-4. 在服务器上先执行 `/root/deploy_admin_backend`，再执行 `/root/deploy_admin_frontend`。
+4. 在服务器上先执行 `./deploy_admin_backend.sh`，再执行 `./deploy_admin_frontend.sh`。
 5. 执行 `branch-guard`、`verify`、`review` 与 `release` 检查。
 
 ## 验证计划
