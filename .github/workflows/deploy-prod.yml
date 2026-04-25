@@ -31,8 +31,8 @@ jobs:
           script: |
             set -euo pipefail
 
-            backend_deploy_command="${PROD_BACKEND_DEPLOY_COMMAND:-/root/deploy_admin_backend}"
-            frontend_deploy_command="${PROD_FRONTEND_DEPLOY_COMMAND:-/root/deploy_admin_frontend}"
+            backend_deploy_command="${PROD_BACKEND_DEPLOY_COMMAND:-./deploy_admin_backend.sh}"
+            frontend_deploy_command="${PROD_FRONTEND_DEPLOY_COMMAND:-./deploy_admin_frontend.sh}"
 
             echo "Deploying admin backend"
             bash -lc "${backend_deploy_command}"

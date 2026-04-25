@@ -15,7 +15,7 @@
 - [ ] 如存在前端 `test:ci` 或 `test` 脚本，已通过
 - [ ] 如存在后端工程，`go test ./...` 与 `go build` 已通过
 - [ ] 已在 GitHub Actions Secrets 配置 `PROD_HOST`、`PROD_USER`，并配置 `PROD_SSH_KEY` 或 `PROD_PASSWORD` 其中之一
-- [ ] 如服务器部署脚本不在 `/root` 下，已配置 `PROD_BACKEND_DEPLOY_COMMAND` 与 `PROD_FRONTEND_DEPLOY_COMMAND`
+- [ ] 如服务器部署脚本不在 SSH 登录后的默认目录下，已配置 `PROD_BACKEND_DEPLOY_COMMAND` 与 `PROD_FRONTEND_DEPLOY_COMMAND`
 - [ ] 已确认远程部署用户具备读取仓库、拉取 `main`、执行部署脚本与重启服务的权限
 - [ ] 已确认 `deploy_admin_backend` 与 `deploy_admin_frontend` 可重复执行
 - [ ] 已确认回滚方式
