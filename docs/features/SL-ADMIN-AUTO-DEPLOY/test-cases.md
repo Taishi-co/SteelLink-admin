@@ -9,15 +9,15 @@
 
 | 编号 | 场景 | 前置条件 | 步骤 | 期望结果 |
 | --- | --- | --- | --- | --- |
-| TC-01 | PR 合并触发生产部署 | PR 通过 review 后合并到 `main`，GitHub Secrets 已配置 | 观察 GitHub Actions `Deploy Production` workflow | workflow 通过 SSH 登录生产服务器，拉取最新 `main`，先执行后端部署脚本，再执行前端部署脚本 |
+| TC-01 | PR 合并触发生产部署 | PR 通过 review 后合并到 `main`，GitHub Secrets 已配置 | 观察 GitHub Actions `Deploy Production` workflow | workflow 通过 SSH 登录生产服务器，先执行 `/root/deploy_admin_backend`，再执行 `/root/deploy_admin_frontend` |
 | TC-02 | 手动触发生产部署 | GitHub Secrets 已配置 | 在 GitHub Actions 页面手动运行 workflow | workflow 使用同一远程部署流程完成部署 |
 
 ## Exception Path
 
 | 编号 | 场景 | 前置条件 | 步骤 | 期望结果 |
 | --- | --- | --- | --- | --- |
-| TC-EX-01 | 缺少生产仓库路径 | `PROD_APP_DIR` 未配置 | 运行 workflow | workflow 明确失败并提示 `PROD_APP_DIR secret is required` |
-| TC-EX-02 | 服务器部署脚本失败 | 远程 `deploy_admin_backend` 或 `deploy_admin_frontend` 返回非 0 | 运行 workflow | workflow 失败，GitHub Actions 日志保留失败阶段 |
+| TC-EX-01 | 缺少服务器认证信息 | `PROD_SSH_KEY` 与 `PROD_PASSWORD` 均未配置 | 运行 workflow | workflow 在 SSH 连接阶段失败，不会执行部署脚本 |
+| TC-EX-02 | 服务器部署脚本失败 | 远程 `/root/deploy_admin_backend` 或 `/root/deploy_admin_frontend` 返回非 0 | 运行 workflow | workflow 失败，GitHub Actions 日志保留失败阶段 |
 
 ## 权限测试
 

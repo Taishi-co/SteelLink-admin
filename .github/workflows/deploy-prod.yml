@@ -20,29 +20,19 @@ jobs:
       - name: Run deployment scripts on production server
         uses: appleboy/ssh-action@v1.2.0
         env:
-          PROD_APP_DIR: ${{ secrets.PROD_APP_DIR }}
           PROD_BACKEND_DEPLOY_COMMAND: ${{ secrets.PROD_BACKEND_DEPLOY_COMMAND }}
           PROD_FRONTEND_DEPLOY_COMMAND: ${{ secrets.PROD_FRONTEND_DEPLOY_COMMAND }}
         with:
           host: ${{ secrets.PROD_HOST }}
           username: ${{ secrets.PROD_USER }}
           key: ${{ secrets.PROD_SSH_KEY }}
-          envs: PROD_APP_DIR,PROD_BACKEND_DEPLOY_COMMAND,PROD_FRONTEND_DEPLOY_COMMAND
+          password: ${{ secrets.PROD_PASSWORD }}
+          envs: PROD_BACKEND_DEPLOY_COMMAND,PROD_FRONTEND_DEPLOY_COMMAND
           script: |
             set -euo pipefail
 
-            if [ -z "${PROD_APP_DIR}" ]; then
-              echo "PROD_APP_DIR secret is required" >&2
-              exit 1
-            fi
-
-            cd "${PROD_APP_DIR}"
-            git fetch origin main
-            git checkout main
-            git pull --ff-only origin main
-
-            backend_deploy_command="${PROD_BACKEND_DEPLOY_COMMAND:-./deploy_admin_backend}"
-            frontend_deploy_command="${PROD_FRONTEND_DEPLOY_COMMAND:-./deploy_admin_frontend}"
+            backend_deploy_command="${PROD_BACKEND_DEPLOY_COMMAND:-/root/deploy_admin_backend}"
+            frontend_deploy_command="${PROD_FRONTEND_DEPLOY_COMMAND:-/root/deploy_admin_frontend}"
 
             echo "Deploying admin backend"
             bash -lc "${backend_deploy_command}"

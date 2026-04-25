@@ -16,9 +16,8 @@
 ### In Scope
 
 - 新增 GitHub Actions workflow，监听 `main` 分支 `push`。
-- 通过 SSH 登录生产服务器。
-- 在服务器仓库目录拉取最新 `main`。
-- 依次执行管理端后端与前端部署脚本。
+- 通过 SSH 登录生产服务器，支持私钥或密码认证。
+- 依次执行 `/root/deploy_admin_backend` 与 `/root/deploy_admin_frontend`。
 - 支持手动 `workflow_dispatch` 触发同一部署流程。
 
 ### Out of Scope
@@ -44,8 +43,8 @@
 - 受影响状态管理: 无
 - 受影响后端 handler/service/repository: 无
 - 受影响数据库或缓存: 无
-- 配置或环境变量变化: 需要在 GitHub Actions Secrets 中配置 `PROD_HOST`、`PROD_USER`、`PROD_SSH_KEY`、`PROD_APP_DIR`，可选配置 `PROD_BACKEND_DEPLOY_COMMAND`、`PROD_FRONTEND_DEPLOY_COMMAND`。
-- 构建或部署影响: PR 合并到 `main` 后会触发 `.github/workflows/deploy-prod.yml`，远程执行后端部署脚本后再执行前端部署脚本。
+- 配置或环境变量变化: 需要在 GitHub Actions Secrets 中配置 `PROD_HOST`、`PROD_USER`，并配置 `PROD_SSH_KEY` 或 `PROD_PASSWORD` 其中之一；可选配置 `PROD_BACKEND_DEPLOY_COMMAND`、`PROD_FRONTEND_DEPLOY_COMMAND`。
+- 构建或部署影响: PR 合并到 `main` 后会触发 `.github/workflows/deploy-prod.yml`，远程执行 `/root/deploy_admin_backend` 后再执行 `/root/deploy_admin_frontend`。拉取最新代码由服务器部署脚本负责。
 
 ## 权限与合规影响
 
@@ -56,5 +55,5 @@
 ## 验收标准
 
 1. `.github/workflows/deploy-prod.yml` 存在，并仅在 `main` 分支 push 或手动触发时运行生产部署。
-2. workflow 使用 GitHub Secrets 读取服务器 SSH 信息与仓库路径，不提交生产密钥。
-3. workflow 在服务器上拉取最新 `main` 后，依次执行 `deploy_admin_backend` 与 `deploy_admin_frontend`，并允许通过 Secrets 覆盖命令。
+2. workflow 使用 GitHub Secrets 读取服务器 SSH 信息，不提交生产密钥。
+3. workflow 依次执行 `/root/deploy_admin_backend` 与 `/root/deploy_admin_frontend`，并允许通过 Secrets 覆盖命令。
