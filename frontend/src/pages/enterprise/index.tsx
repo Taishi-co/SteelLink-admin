@@ -26,6 +26,8 @@ const statusMeta = {
   2: { color: 'red', text: '已驳回' },
 } as const
 
+const EMPTY_ENTERPRISE_ROWS: EnterpriseItem[] = []
+
 export default function EnterpriseList() {
   const [params, setParams] = useState<PageParams>({ page: 1, pageSize: 10 })
   const [selectedId, setSelectedId] = useState<number | null>(null)
@@ -44,7 +46,7 @@ export default function EnterpriseList() {
     enabled: selectedId !== null,
   })
 
-  const rows = data?.data.data.list ?? []
+  const rows = data?.data.data.list ?? EMPTY_ENTERPRISE_ROWS
   const detail = detailData?.data.data
   const total = data?.data.data.total ?? 0
 

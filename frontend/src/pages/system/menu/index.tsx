@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Card, Table, Button, Space, Tag, Popconfirm, message, Modal, Form, Input, Select, InputNumber, TreeSelect } from 'antd'
+import type { TreeSelectProps } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -17,6 +18,8 @@ interface MenuFormValues {
   sort: number
 }
 
+type MenuTreeSelectNode = NonNullable<TreeSelectProps['treeData']>[number]
+
 function buildMenuTree(menus: MenuItem[]): MenuItem[] {
   const map = new Map<number, MenuItem & { children: MenuItem[] }>()
   const roots: MenuItem[] = []
@@ -31,8 +34,9 @@ function buildMenuTree(menus: MenuItem[]): MenuItem[] {
   return roots
 }
 
-function menuToTreeSelectData(menus: MenuItem[]): any[] {
+function menuToTreeSelectData(menus: MenuItem[]): MenuTreeSelectNode[] {
   return menus.map(m => ({
+    key: m.id,
     title: m.name,
     value: m.id,
     children: m.children ? menuToTreeSelectData(m.children) : [],
@@ -58,7 +62,7 @@ export default function MenuList() {
 
   const flatMenus = data?.data.data.list || []
   const menuTree = buildMenuTree(flatMenus)
-  const treeSelectData = [{ title: '顶级菜单', value: 0, children: menuToTreeSelectData(menuTree) }]
+  const treeSelectData: MenuTreeSelectNode[] = [{ key: 0, title: '顶级菜单', value: 0, children: menuToTreeSelectData(menuTree) }]
 
   const { mutate: createMenu, isPending: creating } = useMutation({
     mutationFn: (values: MenuFormValues) => menuApi.create(values),
