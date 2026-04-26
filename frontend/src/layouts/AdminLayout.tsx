@@ -14,6 +14,7 @@ import {
   MenuOutlined,
   AppstoreOutlined,
   FileTextOutlined,
+  ThunderboltOutlined,
 } from '@ant-design/icons'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../store/useAuthStore'
@@ -53,6 +54,14 @@ const menuItems = [
     ],
   },
   {
+    key: '/ai-procurement',
+    icon: <ThunderboltOutlined />,
+    label: 'AI采购管理',
+    children: [
+      { key: '/ai-procurement/config', icon: <SettingOutlined />, label: '采购配置' },
+    ],
+  },
+  {
     key: '/log',
     icon: <FileTextOutlined />,
     label: '操作日志',
@@ -69,6 +78,7 @@ const pageMeta: Record<string, { title: string; description: string }> = {
   '/product': { title: '商品管理', description: '商品信息与审核管理' },
   '/product/order': { title: '订单管理', description: '交易订单与履约管理' },
   '/product/category': { title: '类目配置', description: '商品类目结构管理' },
+  '/ai-procurement/config': { title: 'AI采购配置', description: '配置AI采购流程、模型、商品匹配、融资与审核策略' },
   '/log': { title: '操作日志', description: '管理员操作审计日志' },
 }
 
@@ -87,6 +97,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     if (path.startsWith('/system')) return ['/system']
     if (path === '/user' || path === '/enterprise') return ['/business']
     if (path.startsWith('/product')) return ['/product-center']
+    if (path.startsWith('/ai-procurement')) return ['/ai-procurement']
     return []
   }
 
