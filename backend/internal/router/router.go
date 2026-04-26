@@ -81,6 +81,8 @@ func RegisterRoutes(r *gin.Engine) {
 			protected.POST("/product-categories", handler.CreateProductCategory)
 			protected.PUT("/product-categories/:id", handler.UpdateProductCategory)
 			protected.DELETE("/product-categories/:id", handler.DeleteProductCategory)
+			protected.GET("/ai-procurement/config", handler.GetAIProcurementConfig)
+			protected.PUT("/ai-procurement/config", handler.UpdateAIProcurementConfig)
 
 			// Operation logs routes
 			protected.GET("/operation-logs", handler.ListOperationLogs)

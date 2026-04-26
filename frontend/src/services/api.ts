@@ -277,3 +277,48 @@ export interface OperationLogParams extends PageParams {
 export const operationLogApi = {
   list: (params: OperationLogParams) => get<PageResult<OperationLogItem>>('/operation-logs', { params }),
 }
+
+export interface AIProcurementStageConfig {
+  code: string
+  name: string
+  enabled: boolean
+  required: boolean
+  sort: number
+  timeoutSec: number
+}
+
+export interface AIProcurementConfig {
+  enabled: boolean
+  stages: AIProcurementStageConfig[]
+  model: {
+    provider: string
+    model: string
+    temperature: number
+    maxTokens: number
+    confidenceThreshold: number
+  }
+  matching: {
+    categoryBoost: number
+    supplierPriority: string
+    priceTolerancePct: number
+    maxRecommendations: number
+  }
+  finance: {
+    enabled: boolean
+    minAmount: number
+    maxAmount: number
+    requiredDocs: string[]
+    autoSubmitReview: boolean
+  }
+  review: {
+    reviewerRole: string
+    manualReviewThreshold: number
+    riskKeywords: string[]
+  }
+  updatedAt?: string
+}
+
+export const aiProcurementApi = {
+  getConfig: () => get<AIProcurementConfig>('/ai-procurement/config'),
+  updateConfig: (data: AIProcurementConfig) => put<AIProcurementConfig>('/ai-procurement/config', data),
+}

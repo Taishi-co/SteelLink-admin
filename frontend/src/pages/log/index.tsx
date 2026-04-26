@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Card, Table, Tag, Input, Select, Space, Button, DatePicker } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { useQuery } from '@tanstack/react-query'
-import { operationLogApi, OperationLogItem, OperationLogParams, PageParams } from '../../services/api'
+import { operationLogApi, OperationLogItem, OperationLogParams } from '../../services/api'
 import { formatDateTime } from '../../utils/format'
 import { SearchOutlined } from '@ant-design/icons'
 
