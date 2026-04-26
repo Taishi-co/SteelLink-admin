@@ -419,27 +419,58 @@ func UpdateAdmin(c *gin.Context) {
 	defer cancel()
 
 	if db != nil && tableExists(ctx, db, "admin_users") {
-		result, err := db.ExecContext(ctx, `
-			UPDATE admin_users
-			SET username = ?, real_name = ?, email = ?, phone = ?, status = ?, role_id = ?, updated_at = ?
-			WHERE id = ? AND deleted_at IS NULL`,
-			req.Username,
-			req.RealName,
-			req.Email,
-			req.Phone,
-			req.Status,
-			req.RoleID,
-			time.Now(),
-			c.Param("id"),
-		)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
-			return
-		}
-		affected, _ := result.RowsAffected()
-		if affected == 0 {
-			c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "admin not found"})
-			return
+		if req.Password != "" {
+			hashedPwd, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "密码加密失败"})
+				return
+			}
+			result, err := db.ExecContext(ctx, `
+				UPDATE admin_users
+				SET username = ?, password = ?, real_name = ?, email = ?, phone = ?, status = ?, role_id = ?, updated_at = ?
+				WHERE id = ? AND deleted_at IS NULL`,
+				req.Username,
+				string(hashedPwd),
+				req.RealName,
+				req.Email,
+				req.Phone,
+				req.Status,
+				req.RoleID,
+				time.Now(),
+				c.Param("id"),
+			)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+				return
+			}
+			affected, _ := result.RowsAffected()
+			if affected == 0 {
+				c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "admin not found"})
+				return
+			}
+		} else {
+			result, err := db.ExecContext(ctx, `
+				UPDATE admin_users
+				SET username = ?, real_name = ?, email = ?, phone = ?, status = ?, role_id = ?, updated_at = ?
+				WHERE id = ? AND deleted_at IS NULL`,
+				req.Username,
+				req.RealName,
+				req.Email,
+				req.Phone,
+				req.Status,
+				req.RoleID,
+				time.Now(),
+				c.Param("id"),
+			)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+				return
+			}
+			affected, _ := result.RowsAffected()
+			if affected == 0 {
+				c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "admin not found"})
+				return
+			}
 		}
 		logOpFromContext(c, db, "admin", "update", 0, fmt.Sprintf(`{"id":"%s","username":"%s"}`, c.Param("id"), req.Username))
 		GetAdmin(c)
