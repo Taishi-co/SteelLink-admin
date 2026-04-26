@@ -64,6 +64,7 @@ func RegisterRoutes(r *gin.Engine) {
 			protected.GET("/users", handler.ListUsers)
 			protected.GET("/users/:id", handler.GetUser)
 			protected.PUT("/users/:id/status", handler.UpdateUserStatus)
+			protected.PUT("/users/:id/identity", handler.AuditUserIdentity)
 
 			// Enterprise management routes
 			protected.GET("/enterprises", handler.ListEnterprises)
