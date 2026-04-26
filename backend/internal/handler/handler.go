@@ -13,6 +13,7 @@ import (
 	"github.com/Taishi-co/SteelLink-admin/backend/internal/auth"
 	"github.com/Taishi-co/SteelLink-admin/backend/internal/database"
 	"github.com/gin-gonic/gin"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type loginRequest struct {
@@ -102,6 +103,20 @@ func GetDashboardStats(c *gin.Context) {
 	})
 }
 
+const (
+	maxLoginFails   = 5
+	lockoutDuration = 60 * time.Minute
+)
+
+func ensureAdminSecurityColumns(ctx context.Context, db *sql.DB) {
+	if !columnExists(ctx, db, "admin_users", "login_fail_count") {
+		db.ExecContext(ctx, `ALTER TABLE admin_users ADD COLUMN login_fail_count INT NOT NULL DEFAULT 0`)
+	}
+	if !columnExists(ctx, db, "admin_users", "locked_until") {
+		db.ExecContext(ctx, `ALTER TABLE admin_users ADD COLUMN locked_until DATETIME NULL DEFAULT NULL`)
+	}
+}
+
 // Login handles admin login
 func Login(c *gin.Context) {
 	var req loginRequest
@@ -111,6 +126,78 @@ func Login(c *gin.Context) {
 			"message": "invalid login payload",
 		})
 		return
+	}
+
+	db := database.GetDB()
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	if db != nil && tableExists(ctx, db, "admin_users") {
+		ensureAdminSecurityColumns(ctx, db)
+
+		var id int64
+		var username, realName, hashedPwd string
+		var roleID int
+		var failCount int
+		var lockedUntil sql.NullTime
+
+		err := db.QueryRowContext(ctx, `
+			SELECT id, username, real_name, password, role_id, COALESCE(login_fail_count, 0), locked_until
+			FROM admin_users WHERE deleted_at IS NULL AND username = ? AND status = 1 LIMIT 1`, req.Username,
+		).Scan(&id, &username, &realName, &hashedPwd, &roleID, &failCount, &lockedUntil)
+		if err == nil {
+			if lockedUntil.Valid && lockedUntil.Time.After(time.Now()) {
+				c.JSON(http.StatusForbidden, gin.H{
+					"code":    403,
+					"message": fmt.Sprintf("账号已锁定，请于 %s 后再试", lockedUntil.Time.Format("15:04:05")),
+				})
+				return
+			}
+
+			if err := bcrypt.CompareHashAndPassword([]byte(hashedPwd), []byte(req.Password)); err != nil {
+				failCount++
+				if failCount >= maxLoginFails {
+					lockTime := time.Now().Add(lockoutDuration)
+					db.ExecContext(ctx, `UPDATE admin_users SET login_fail_count = ?, locked_until = ?, updated_at = NOW() WHERE id = ?`, failCount, lockTime, id)
+					c.JSON(http.StatusForbidden, gin.H{
+						"code":    403,
+						"message": fmt.Sprintf("连续登录失败%d次，账号已锁定1小时", maxLoginFails),
+					})
+				} else {
+					db.ExecContext(ctx, `UPDATE admin_users SET login_fail_count = ?, updated_at = NOW() WHERE id = ?`, failCount, id)
+					c.JSON(http.StatusUnauthorized, gin.H{
+						"code":    401,
+						"message": fmt.Sprintf("用户名或密码错误（已失败%d次，%d次后锁定）", failCount, maxLoginFails),
+					})
+				}
+				return
+			}
+
+			db.ExecContext(ctx, `UPDATE admin_users SET login_fail_count = 0, locked_until = NULL, updated_at = NOW() WHERE id = ?`, id)
+
+			token, err := auth.GenerateAdminToken(id, username, realName)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "failed to generate token"})
+				return
+			}
+
+			c.JSON(http.StatusOK, gin.H{
+				"code":    0,
+				"message": "success",
+				"data": gin.H{
+					"token": token,
+					"adminInfo": gin.H{
+						"id":       id,
+						"username": username,
+						"realName": realName,
+						"roleId":   roleID,
+					},
+				},
+			})
+
+			logOperation(ctx, db, id, username, "auth", "login", "POST", c.Request.URL.Path, c.ClientIP(), "", 0)
+			return
+		}
 	}
 
 	if req.Username != defaultAdminUsername() || req.Password != defaultAdminPassword() {
@@ -144,7 +231,6 @@ func Login(c *gin.Context) {
 		},
 	})
 
-	db := database.GetDB()
 	if db != nil {
 		logOperation(c.Request.Context(), db, 1, defaultAdminUsername(), "auth", "login", "POST", c.Request.URL.Path, c.ClientIP(), "", 0)
 	}
@@ -278,12 +364,17 @@ func CreateAdmin(c *gin.Context) {
 	defer cancel()
 
 	if db != nil && tableExists(ctx, db, "admin_users") {
+		hashedPwd, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "密码加密失败"})
+			return
+		}
 		now := time.Now()
 		result, err := db.ExecContext(ctx, `
 			INSERT INTO admin_users (username, password, real_name, email, phone, status, role_id, created_at, updated_at)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			req.Username,
-			req.Password,
+			string(hashedPwd),
 			req.RealName,
 			req.Email,
 			req.Phone,
@@ -328,27 +419,58 @@ func UpdateAdmin(c *gin.Context) {
 	defer cancel()
 
 	if db != nil && tableExists(ctx, db, "admin_users") {
-		result, err := db.ExecContext(ctx, `
-			UPDATE admin_users
-			SET username = ?, real_name = ?, email = ?, phone = ?, status = ?, role_id = ?, updated_at = ?
-			WHERE id = ? AND deleted_at IS NULL`,
-			req.Username,
-			req.RealName,
-			req.Email,
-			req.Phone,
-			req.Status,
-			req.RoleID,
-			time.Now(),
-			c.Param("id"),
-		)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
-			return
-		}
-		affected, _ := result.RowsAffected()
-		if affected == 0 {
-			c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "admin not found"})
-			return
+		if req.Password != "" {
+			hashedPwd, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "密码加密失败"})
+				return
+			}
+			result, err := db.ExecContext(ctx, `
+				UPDATE admin_users
+				SET username = ?, password = ?, real_name = ?, email = ?, phone = ?, status = ?, role_id = ?, updated_at = ?
+				WHERE id = ? AND deleted_at IS NULL`,
+				req.Username,
+				string(hashedPwd),
+				req.RealName,
+				req.Email,
+				req.Phone,
+				req.Status,
+				req.RoleID,
+				time.Now(),
+				c.Param("id"),
+			)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+				return
+			}
+			affected, _ := result.RowsAffected()
+			if affected == 0 {
+				c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "admin not found"})
+				return
+			}
+		} else {
+			result, err := db.ExecContext(ctx, `
+				UPDATE admin_users
+				SET username = ?, real_name = ?, email = ?, phone = ?, status = ?, role_id = ?, updated_at = ?
+				WHERE id = ? AND deleted_at IS NULL`,
+				req.Username,
+				req.RealName,
+				req.Email,
+				req.Phone,
+				req.Status,
+				req.RoleID,
+				time.Now(),
+				c.Param("id"),
+			)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+				return
+			}
+			affected, _ := result.RowsAffected()
+			if affected == 0 {
+				c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "admin not found"})
+				return
+			}
 		}
 		logOpFromContext(c, db, "admin", "update", 0, fmt.Sprintf(`{"id":"%s","username":"%s"}`, c.Param("id"), req.Username))
 		GetAdmin(c)
@@ -898,10 +1020,14 @@ func ListUsers(c *gin.Context) {
 	}
 
 	hasEnterpriseID := columnExists(ctx, db, "users", "enterprise_id")
+	hasIdentityStatus := columnExists(ctx, db, "users", "identity_status")
 	query := `
 		SELECT id, username, COALESCE(phone, ''), COALESCE(email, ''), status, created_at`
 	if hasEnterpriseID {
 		query += `, enterprise_id`
+	}
+	if hasIdentityStatus {
+		query += `, COALESCE(identity_status, 0)`
 	}
 	query += ` FROM users WHERE deleted_at IS NULL ORDER BY id DESC LIMIT ? OFFSET ?`
 
@@ -916,16 +1042,16 @@ func ListUsers(c *gin.Context) {
 	for rows.Next() {
 		var item userItem
 		item.RealName = ""
+		scanTargets := []any{&item.ID, &item.Username, &item.Phone, &item.Email, &item.Status, &item.CreatedAt}
 		if hasEnterpriseID {
-			if err := rows.Scan(&item.ID, &item.Username, &item.Phone, &item.Email, &item.Status, &item.CreatedAt, &item.EnterpriseID); err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
-				return
-			}
-		} else {
-			if err := rows.Scan(&item.ID, &item.Username, &item.Phone, &item.Email, &item.Status, &item.CreatedAt); err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
-				return
-			}
+			scanTargets = append(scanTargets, &item.EnterpriseID)
+		}
+		if hasIdentityStatus {
+			scanTargets = append(scanTargets, &item.IdentityStatus)
+		}
+		if err := rows.Scan(scanTargets...); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+			return
 		}
 		if item.RealName == "" {
 			item.RealName = item.Username
@@ -949,6 +1075,7 @@ func GetUser(c *gin.Context) {
 	id := c.Param("id")
 	hasEnterpriseID := columnExists(ctx, db, "users", "enterprise_id")
 	hasRealName := columnExists(ctx, db, "users", "real_name")
+	hasIdentityStatus := columnExists(ctx, db, "users", "identity_status")
 
 	query := `SELECT id, username, COALESCE(phone, ''), COALESCE(email, ''), status, created_at`
 	if hasEnterpriseID {
@@ -956,6 +1083,9 @@ func GetUser(c *gin.Context) {
 	}
 	if hasRealName {
 		query += `, COALESCE(real_name, '')`
+	}
+	if hasIdentityStatus {
+		query += `, COALESCE(identity_status, 0)`
 	}
 	query += ` FROM users WHERE deleted_at IS NULL AND id = ? LIMIT 1`
 
@@ -969,6 +1099,9 @@ func GetUser(c *gin.Context) {
 	}
 	if hasRealName {
 		scanTargets = append(scanTargets, &realName)
+	}
+	if hasIdentityStatus {
+		scanTargets = append(scanTargets, &item.IdentityStatus)
 	}
 
 	if err := row.Scan(scanTargets...); err != nil {
@@ -1032,6 +1165,54 @@ func UpdateUserStatus(c *gin.Context) {
 		"code":    0,
 		"message": "success",
 	})
+}
+
+func AuditUserIdentity(c *gin.Context) {
+	db := database.GetDB()
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	if db == nil || !columnExists(ctx, db, "users", "identity_status") {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"code": 503, "message": "database unavailable"})
+		return
+	}
+
+	id := c.Param("id")
+
+	var req struct {
+		Status int    `json:"status"`
+		Reject string `json:"reject"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		return
+	}
+
+	if req.Status != 2 && req.Status != 3 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "状态值无效，仅支持 2(通过) 或 3(驳回)"})
+		return
+	}
+
+	var result sql.Result
+	var err error
+	if req.Status == 2 {
+		result, err = db.ExecContext(ctx, `UPDATE users SET identity_status = 2, identity_reject = '', updated_at = NOW() WHERE deleted_at IS NULL AND id = ? AND identity_status = 1`, id)
+	} else {
+		result, err = db.ExecContext(ctx, `UPDATE users SET identity_status = 3, identity_reject = ?, updated_at = NOW() WHERE deleted_at IS NULL AND id = ? AND identity_status = 1`, req.Reject, id)
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "用户不存在或实名状态不可审核"})
+		return
+	}
+
+	logOpFromContext(c, db, "user", "audit_identity", 0, fmt.Sprintf(`{"id":"%s","identity_status":%d}`, id, req.Status))
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success"})
 }
 
 // ListEnterprises returns list of enterprises
