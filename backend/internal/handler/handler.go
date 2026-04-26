@@ -13,6 +13,7 @@ import (
 	"github.com/Taishi-co/SteelLink-admin/backend/internal/auth"
 	"github.com/Taishi-co/SteelLink-admin/backend/internal/database"
 	"github.com/gin-gonic/gin"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type loginRequest struct {
@@ -102,6 +103,20 @@ func GetDashboardStats(c *gin.Context) {
 	})
 }
 
+const (
+	maxLoginFails   = 5
+	lockoutDuration = 60 * time.Minute
+)
+
+func ensureAdminSecurityColumns(ctx context.Context, db *sql.DB) {
+	if !columnExists(ctx, db, "admin_users", "login_fail_count") {
+		db.ExecContext(ctx, `ALTER TABLE admin_users ADD COLUMN login_fail_count INT NOT NULL DEFAULT 0`)
+	}
+	if !columnExists(ctx, db, "admin_users", "locked_until") {
+		db.ExecContext(ctx, `ALTER TABLE admin_users ADD COLUMN locked_until DATETIME NULL DEFAULT NULL`)
+	}
+}
+
 // Login handles admin login
 func Login(c *gin.Context) {
 	var req loginRequest
@@ -111,6 +126,78 @@ func Login(c *gin.Context) {
 			"message": "invalid login payload",
 		})
 		return
+	}
+
+	db := database.GetDB()
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	if db != nil && tableExists(ctx, db, "admin_users") {
+		ensureAdminSecurityColumns(ctx, db)
+
+		var id int64
+		var username, realName, hashedPwd string
+		var roleID int
+		var failCount int
+		var lockedUntil sql.NullTime
+
+		err := db.QueryRowContext(ctx, `
+			SELECT id, username, real_name, password, role_id, COALESCE(login_fail_count, 0), locked_until
+			FROM admin_users WHERE deleted_at IS NULL AND username = ? AND status = 1 LIMIT 1`, req.Username,
+		).Scan(&id, &username, &realName, &hashedPwd, &roleID, &failCount, &lockedUntil)
+		if err == nil {
+			if lockedUntil.Valid && lockedUntil.Time.After(time.Now()) {
+				c.JSON(http.StatusForbidden, gin.H{
+					"code":    403,
+					"message": fmt.Sprintf("账号已锁定，请于 %s 后再试", lockedUntil.Time.Format("15:04:05")),
+				})
+				return
+			}
+
+			if err := bcrypt.CompareHashAndPassword([]byte(hashedPwd), []byte(req.Password)); err != nil {
+				failCount++
+				if failCount >= maxLoginFails {
+					lockTime := time.Now().Add(lockoutDuration)
+					db.ExecContext(ctx, `UPDATE admin_users SET login_fail_count = ?, locked_until = ?, updated_at = NOW() WHERE id = ?`, failCount, lockTime, id)
+					c.JSON(http.StatusForbidden, gin.H{
+						"code":    403,
+						"message": fmt.Sprintf("连续登录失败%d次，账号已锁定1小时", maxLoginFails),
+					})
+				} else {
+					db.ExecContext(ctx, `UPDATE admin_users SET login_fail_count = ?, updated_at = NOW() WHERE id = ?`, failCount, id)
+					c.JSON(http.StatusUnauthorized, gin.H{
+						"code":    401,
+						"message": fmt.Sprintf("用户名或密码错误（已失败%d次，%d次后锁定）", failCount, maxLoginFails),
+					})
+				}
+				return
+			}
+
+			db.ExecContext(ctx, `UPDATE admin_users SET login_fail_count = 0, locked_until = NULL, updated_at = NOW() WHERE id = ?`, id)
+
+			token, err := auth.GenerateAdminToken(id, username, realName)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "failed to generate token"})
+				return
+			}
+
+			c.JSON(http.StatusOK, gin.H{
+				"code":    0,
+				"message": "success",
+				"data": gin.H{
+					"token": token,
+					"adminInfo": gin.H{
+						"id":       id,
+						"username": username,
+						"realName": realName,
+						"roleId":   roleID,
+					},
+				},
+			})
+
+			logOperation(ctx, db, id, username, "auth", "login", "POST", c.Request.URL.Path, c.ClientIP(), "", 0)
+			return
+		}
 	}
 
 	if req.Username != defaultAdminUsername() || req.Password != defaultAdminPassword() {
@@ -144,7 +231,6 @@ func Login(c *gin.Context) {
 		},
 	})
 
-	db := database.GetDB()
 	if db != nil {
 		logOperation(c.Request.Context(), db, 1, defaultAdminUsername(), "auth", "login", "POST", c.Request.URL.Path, c.ClientIP(), "", 0)
 	}
@@ -278,12 +364,17 @@ func CreateAdmin(c *gin.Context) {
 	defer cancel()
 
 	if db != nil && tableExists(ctx, db, "admin_users") {
+		hashedPwd, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "密码加密失败"})
+			return
+		}
 		now := time.Now()
 		result, err := db.ExecContext(ctx, `
 			INSERT INTO admin_users (username, password, real_name, email, phone, status, role_id, created_at, updated_at)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			req.Username,
-			req.Password,
+			string(hashedPwd),
 			req.RealName,
 			req.Email,
 			req.Phone,
