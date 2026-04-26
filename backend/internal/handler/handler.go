@@ -143,6 +143,11 @@ func Login(c *gin.Context) {
 			},
 		},
 	})
+
+	db := database.GetDB()
+	if db != nil {
+		logOperation(c.Request.Context(), db, 1, defaultAdminUsername(), "auth", "login", "POST", c.Request.URL.Path, c.ClientIP(), "", 0)
+	}
 }
 
 // Logout clears current session on client side
@@ -292,6 +297,7 @@ func CreateAdmin(c *gin.Context) {
 			return
 		}
 		id, _ := result.LastInsertId()
+		logOpFromContext(c, db, "admin", "create", 0, fmt.Sprintf(`{"username":"%s","realName":"%s"}`, req.Username, req.RealName))
 		c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": adminItem{
 			ID:        id,
 			Username:  req.Username,
@@ -344,6 +350,7 @@ func UpdateAdmin(c *gin.Context) {
 			c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "admin not found"})
 			return
 		}
+		logOpFromContext(c, db, "admin", "update", 0, fmt.Sprintf(`{"id":"%s","username":"%s"}`, c.Param("id"), req.Username))
 		GetAdmin(c)
 		return
 	}
@@ -376,6 +383,7 @@ func DeleteAdmin(c *gin.Context) {
 			c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "admin not found"})
 			return
 		}
+		logOpFromContext(c, db, "admin", "delete", 0, fmt.Sprintf(`{"id":"%s"}`, c.Param("id")))
 		c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": true})
 		return
 	}
@@ -388,6 +396,83 @@ func DeleteAdmin(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": true})
+}
+
+func ListOperationLogs(c *gin.Context) {
+	db := database.GetDB()
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	if db == nil || !tableExists(ctx, db, "admin_operation_logs") {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"code": 503, "message": "database unavailable"})
+		return
+	}
+
+	limit, offset := parsePageParams(c.Query("page"), c.Query("pageSize"))
+
+	whereParts := []string{"1=1"}
+	args := make([]any, 0)
+
+	if module := c.Query("module"); module != "" {
+		whereParts = append(whereParts, "module = ?")
+		args = append(args, module)
+	}
+	if action := c.Query("action"); action != "" {
+		whereParts = append(whereParts, "action = ?")
+		args = append(args, action)
+	}
+	if adminName := c.Query("adminName"); adminName != "" {
+		whereParts = append(whereParts, "admin_name LIKE ?")
+		args = append(args, "%"+adminName+"%")
+	}
+	if startDate := c.Query("startDate"); startDate != "" {
+		whereParts = append(whereParts, "created_at >= ?")
+		args = append(args, startDate+" 00:00:00")
+	}
+	if endDate := c.Query("endDate"); endDate != "" {
+		whereParts = append(whereParts, "created_at <= ?")
+		args = append(args, endDate+" 23:59:59")
+	}
+
+	whereClause := strings.Join(whereParts, " AND ")
+
+	total, err := queryCount(ctx, db, fmt.Sprintf(`SELECT COUNT(*) FROM admin_operation_logs WHERE %s`, whereClause), args...)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+
+	queryArgs := append(append([]any{}, args...), limit, offset)
+	rows, err := db.QueryContext(ctx, fmt.Sprintf(`
+		SELECT id, admin_id, COALESCE(admin_name, ''), COALESCE(module, ''), COALESCE(action, ''),
+		       COALESCE(method, ''), COALESCE(path, ''), COALESCE(ip, ''),
+		       COALESCE(request_body, ''), COALESCE(response_code, 0), created_at
+		FROM admin_operation_logs
+		WHERE %s
+		ORDER BY id DESC
+		LIMIT ? OFFSET ?`, whereClause), queryArgs...)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	items := make([]operationLogItem, 0)
+	for rows.Next() {
+		var item operationLogItem
+		if err := rows.Scan(&item.ID, &item.AdminID, &item.AdminName, &item.Module, &item.Action,
+			&item.Method, &item.Path, &item.IP, &item.RequestBody, &item.ResponseCode, &item.CreatedAt); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+			return
+		}
+		items = append(items, item)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "success",
+		"data":    pageResult[operationLogItem]{List: items, Total: total},
+	})
 }
 
 // ListRoles returns list of roles
@@ -857,15 +942,92 @@ func ListUsers(c *gin.Context) {
 
 // GetUser returns a single user
 func GetUser(c *gin.Context) {
+	db := database.GetDB()
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	id := c.Param("id")
+	hasEnterpriseID := columnExists(ctx, db, "users", "enterprise_id")
+	hasRealName := columnExists(ctx, db, "users", "real_name")
+
+	query := `SELECT id, username, COALESCE(phone, ''), COALESCE(email, ''), status, created_at`
+	if hasEnterpriseID {
+		query += `, enterprise_id`
+	}
+	if hasRealName {
+		query += `, COALESCE(real_name, '')`
+	}
+	query += ` FROM users WHERE deleted_at IS NULL AND id = ? LIMIT 1`
+
+	row := db.QueryRowContext(ctx, query, id)
+
+	var item userItem
+	var realName sql.NullString
+	scanTargets := []any{&item.ID, &item.Username, &item.Phone, &item.Email, &item.Status, &item.CreatedAt}
+	if hasEnterpriseID {
+		scanTargets = append(scanTargets, &item.EnterpriseID)
+	}
+	if hasRealName {
+		scanTargets = append(scanTargets, &realName)
+	}
+
+	if err := row.Scan(scanTargets...); err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "用户不存在"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+
+	if hasRealName && realName.Valid && realName.String != "" {
+		item.RealName = realName.String
+	} else if item.RealName == "" {
+		item.RealName = item.Username
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
 		"message": "success",
-		"data":    nil,
+		"data":    item,
 	})
 }
 
 // UpdateUserStatus updates user status
 func UpdateUserStatus(c *gin.Context) {
+	db := database.GetDB()
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	id := c.Param("id")
+
+	var req struct {
+		Status int `json:"status"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		return
+	}
+
+	if req.Status != 0 && req.Status != 1 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "状态值无效，仅支持 0(停用) 或 1(启用)"})
+		return
+	}
+
+	result, err := db.ExecContext(ctx, `UPDATE users SET status = ?, updated_at = NOW() WHERE deleted_at IS NULL AND id = ?`, req.Status, id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "用户不存在"})
+		return
+	}
+
+	logOpFromContext(c, db, "user", "update_status", 0, fmt.Sprintf(`{"id":"%s","status":%d}`, id, req.Status))
+
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
 		"message": "success",
@@ -1063,6 +1225,8 @@ func AuditEnterprise(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "enterprise not found"})
 		return
 	}
+
+	logOpFromContext(c, db, "enterprise", "audit", 0, fmt.Sprintf(`{"id":"%s","status":%d}`, c.Param("id"), req.Status))
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
@@ -1555,6 +1719,8 @@ func AuditProduct(c *gin.Context) {
 		}
 	}
 
+	logOpFromContext(c, db, "product", "audit", 0, fmt.Sprintf(`{"id":"%s","status":%d}`, c.Param("id"), req.Status))
+
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
 		"message": "success",
@@ -1562,6 +1728,136 @@ func AuditProduct(c *gin.Context) {
 }
 
 // ListProductCategories returns list of product categories
+func UpdateProduct(c *gin.Context) {
+	db := database.GetDB()
+	if db == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"code": 503, "message": "database unavailable"})
+		return
+	}
+
+	id := c.Param("id")
+
+	var req struct {
+		Name          string  `json:"name"`
+		Category      string  `json:"category"`
+		SubCategory   string  `json:"subCategory"`
+		SteelMill     string  `json:"steelMill"`
+		UnitPrice     float64 `json:"unitPrice"`
+		Quantity      float64 `json:"quantity"`
+		MinOrderQty   float64 `json:"minOrderQty"`
+		DeliveryDays  int     `json:"deliveryDays"`
+		QuoteValidity int     `json:"quoteValidity"`
+		Description   string  `json:"description"`
+		AuditRemark   string  `json:"auditRemark"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	setParts := []string{}
+	args := []any{}
+
+	if req.Name != "" {
+		setParts = append(setParts, "name = ?")
+		args = append(args, req.Name)
+	}
+	if req.Category != "" {
+		setParts = append(setParts, "category = ?")
+		args = append(args, req.Category)
+	}
+	if req.SubCategory != "" {
+		setParts = append(setParts, "sub_category = ?")
+		args = append(args, req.SubCategory)
+	}
+	if req.SteelMill != "" {
+		setParts = append(setParts, "steel_mill = ?")
+		args = append(args, req.SteelMill)
+	}
+	if req.UnitPrice > 0 {
+		setParts = append(setParts, "unit_price = ?")
+		args = append(args, req.UnitPrice)
+	}
+	if req.Quantity > 0 {
+		setParts = append(setParts, "quantity = ?")
+		args = append(args, req.Quantity)
+	}
+	if req.MinOrderQty > 0 {
+		setParts = append(setParts, "min_order_qty = ?")
+		args = append(args, req.MinOrderQty)
+	}
+	if req.DeliveryDays > 0 {
+		setParts = append(setParts, "delivery_days = ?")
+		args = append(args, req.DeliveryDays)
+	}
+	if req.QuoteValidity > 0 {
+		setParts = append(setParts, "quote_validity = ?")
+		args = append(args, req.QuoteValidity)
+	}
+	if req.Description != "" {
+		setParts = append(setParts, "description = ?")
+		args = append(args, req.Description)
+	}
+	if req.AuditRemark != "" {
+		if columnExists(ctx, db, "products", "audit_remark") {
+			setParts = append(setParts, "audit_remark = ?")
+			args = append(args, req.AuditRemark)
+		}
+	}
+
+	if len(setParts) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "没有需要更新的字段"})
+		return
+	}
+
+	setParts = append(setParts, "updated_at = ?")
+	args = append(args, time.Now())
+	args = append(args, id)
+
+	query := fmt.Sprintf("UPDATE products SET %s WHERE deleted_at IS NULL AND id = ?", strings.Join(setParts, ", "))
+	result, err := db.ExecContext(ctx, query, args...)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+	affected, _ := result.RowsAffected()
+	if affected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "商品不存在"})
+		return
+	}
+
+	logOpFromContext(c, db, "product", "update", 0, fmt.Sprintf(`{"id":"%s"}`, id))
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": true})
+}
+
+func DeleteProduct(c *gin.Context) {
+	db := database.GetDB()
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	if db == nil || !tableExists(ctx, db, "products") {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"code": 503, "message": "database unavailable"})
+		return
+	}
+
+	result, err := db.ExecContext(ctx, `UPDATE products SET deleted_at = ?, status = 4, updated_at = ? WHERE deleted_at IS NULL AND id = ?`, time.Now(), time.Now(), c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+	affected, _ := result.RowsAffected()
+	if affected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "商品不存在"})
+		return
+	}
+
+	logOpFromContext(c, db, "product", "delete", 0, fmt.Sprintf(`{"id":"%s"}`, c.Param("id")))
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": true})
+}
+
 func ListProductCategories(c *gin.Context) {
 	db := database.GetDB()
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)

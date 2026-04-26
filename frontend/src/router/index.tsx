@@ -15,6 +15,7 @@ const EnterpriseList = lazy(() => import('../pages/enterprise'))
 const ProductList = lazy(() => import('../pages/product'))
 const OrderList = lazy(() => import('../pages/order'))
 const CategoryList = lazy(() => import('../pages/product/category'))
+const OperationLogList = lazy(() => import('../pages/log'))
 
 // Loading component
 const Loading = () => (
@@ -103,6 +104,10 @@ const router = createBrowserRouter([
             element: <CategoryList />,
           },
         ],
+      },
+      {
+        path: 'log',
+        element: <OperationLogList />,
       },
     ],
   },

@@ -73,12 +73,17 @@ func RegisterRoutes(r *gin.Engine) {
 			// Product management routes
 			protected.GET("/products", handler.ListProducts)
 			protected.GET("/products/:id", handler.GetProduct)
+			protected.PUT("/products/:id", handler.UpdateProduct)
 			protected.PUT("/products/:id/audit", handler.AuditProduct)
+			protected.DELETE("/products/:id", handler.DeleteProduct)
 			protected.GET("/orders", handler.ListOrders)
 			protected.GET("/product-categories", handler.ListProductCategories)
 			protected.POST("/product-categories", handler.CreateProductCategory)
 			protected.PUT("/product-categories/:id", handler.UpdateProductCategory)
 			protected.DELETE("/product-categories/:id", handler.DeleteProductCategory)
+
+			// Operation logs routes
+			protected.GET("/operation-logs", handler.ListOperationLogs)
 		}
 	}
 }
