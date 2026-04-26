@@ -398,6 +398,83 @@ func DeleteAdmin(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": true})
 }
 
+func ListOperationLogs(c *gin.Context) {
+	db := database.GetDB()
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	if db == nil || !tableExists(ctx, db, "admin_operation_logs") {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"code": 503, "message": "database unavailable"})
+		return
+	}
+
+	limit, offset := parsePageParams(c.Query("page"), c.Query("pageSize"))
+
+	whereParts := []string{"1=1"}
+	args := make([]any, 0)
+
+	if module := c.Query("module"); module != "" {
+		whereParts = append(whereParts, "module = ?")
+		args = append(args, module)
+	}
+	if action := c.Query("action"); action != "" {
+		whereParts = append(whereParts, "action = ?")
+		args = append(args, action)
+	}
+	if adminName := c.Query("adminName"); adminName != "" {
+		whereParts = append(whereParts, "admin_name LIKE ?")
+		args = append(args, "%"+adminName+"%")
+	}
+	if startDate := c.Query("startDate"); startDate != "" {
+		whereParts = append(whereParts, "created_at >= ?")
+		args = append(args, startDate+" 00:00:00")
+	}
+	if endDate := c.Query("endDate"); endDate != "" {
+		whereParts = append(whereParts, "created_at <= ?")
+		args = append(args, endDate+" 23:59:59")
+	}
+
+	whereClause := strings.Join(whereParts, " AND ")
+
+	total, err := queryCount(ctx, db, fmt.Sprintf(`SELECT COUNT(*) FROM admin_operation_logs WHERE %s`, whereClause), args...)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+
+	queryArgs := append(append([]any{}, args...), limit, offset)
+	rows, err := db.QueryContext(ctx, fmt.Sprintf(`
+		SELECT id, admin_id, COALESCE(admin_name, ''), COALESCE(module, ''), COALESCE(action, ''),
+		       COALESCE(method, ''), COALESCE(path, ''), COALESCE(ip, ''),
+		       COALESCE(request_body, ''), COALESCE(response_code, 0), created_at
+		FROM admin_operation_logs
+		WHERE %s
+		ORDER BY id DESC
+		LIMIT ? OFFSET ?`, whereClause), queryArgs...)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	items := make([]operationLogItem, 0)
+	for rows.Next() {
+		var item operationLogItem
+		if err := rows.Scan(&item.ID, &item.AdminID, &item.AdminName, &item.Module, &item.Action,
+			&item.Method, &item.Path, &item.IP, &item.RequestBody, &item.ResponseCode, &item.CreatedAt); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+			return
+		}
+		items = append(items, item)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "success",
+		"data":    pageResult[operationLogItem]{List: items, Total: total},
+	})
+}
+
 // ListRoles returns list of roles
 func ListRoles(c *gin.Context) {
 	db := database.GetDB()
@@ -1651,6 +1728,136 @@ func AuditProduct(c *gin.Context) {
 }
 
 // ListProductCategories returns list of product categories
+func UpdateProduct(c *gin.Context) {
+	db := database.GetDB()
+	if db == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"code": 503, "message": "database unavailable"})
+		return
+	}
+
+	id := c.Param("id")
+
+	var req struct {
+		Name          string  `json:"name"`
+		Category      string  `json:"category"`
+		SubCategory   string  `json:"subCategory"`
+		SteelMill     string  `json:"steelMill"`
+		UnitPrice     float64 `json:"unitPrice"`
+		Quantity      float64 `json:"quantity"`
+		MinOrderQty   float64 `json:"minOrderQty"`
+		DeliveryDays  int     `json:"deliveryDays"`
+		QuoteValidity int     `json:"quoteValidity"`
+		Description   string  `json:"description"`
+		AuditRemark   string  `json:"auditRemark"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	setParts := []string{}
+	args := []any{}
+
+	if req.Name != "" {
+		setParts = append(setParts, "name = ?")
+		args = append(args, req.Name)
+	}
+	if req.Category != "" {
+		setParts = append(setParts, "category = ?")
+		args = append(args, req.Category)
+	}
+	if req.SubCategory != "" {
+		setParts = append(setParts, "sub_category = ?")
+		args = append(args, req.SubCategory)
+	}
+	if req.SteelMill != "" {
+		setParts = append(setParts, "steel_mill = ?")
+		args = append(args, req.SteelMill)
+	}
+	if req.UnitPrice > 0 {
+		setParts = append(setParts, "unit_price = ?")
+		args = append(args, req.UnitPrice)
+	}
+	if req.Quantity > 0 {
+		setParts = append(setParts, "quantity = ?")
+		args = append(args, req.Quantity)
+	}
+	if req.MinOrderQty > 0 {
+		setParts = append(setParts, "min_order_qty = ?")
+		args = append(args, req.MinOrderQty)
+	}
+	if req.DeliveryDays > 0 {
+		setParts = append(setParts, "delivery_days = ?")
+		args = append(args, req.DeliveryDays)
+	}
+	if req.QuoteValidity > 0 {
+		setParts = append(setParts, "quote_validity = ?")
+		args = append(args, req.QuoteValidity)
+	}
+	if req.Description != "" {
+		setParts = append(setParts, "description = ?")
+		args = append(args, req.Description)
+	}
+	if req.AuditRemark != "" {
+		if columnExists(ctx, db, "products", "audit_remark") {
+			setParts = append(setParts, "audit_remark = ?")
+			args = append(args, req.AuditRemark)
+		}
+	}
+
+	if len(setParts) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "没有需要更新的字段"})
+		return
+	}
+
+	setParts = append(setParts, "updated_at = ?")
+	args = append(args, time.Now())
+	args = append(args, id)
+
+	query := fmt.Sprintf("UPDATE products SET %s WHERE deleted_at IS NULL AND id = ?", strings.Join(setParts, ", "))
+	result, err := db.ExecContext(ctx, query, args...)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+	affected, _ := result.RowsAffected()
+	if affected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "商品不存在"})
+		return
+	}
+
+	logOpFromContext(c, db, "product", "update", 0, fmt.Sprintf(`{"id":"%s"}`, id))
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": true})
+}
+
+func DeleteProduct(c *gin.Context) {
+	db := database.GetDB()
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	if db == nil || !tableExists(ctx, db, "products") {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"code": 503, "message": "database unavailable"})
+		return
+	}
+
+	result, err := db.ExecContext(ctx, `UPDATE products SET deleted_at = ?, status = 4, updated_at = ? WHERE deleted_at IS NULL AND id = ?`, time.Now(), time.Now(), c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+	affected, _ := result.RowsAffected()
+	if affected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "商品不存在"})
+		return
+	}
+
+	logOpFromContext(c, db, "product", "delete", 0, fmt.Sprintf(`{"id":"%s"}`, c.Param("id")))
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": true})
+}
+
 func ListProductCategories(c *gin.Context) {
 	db := database.GetDB()
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)

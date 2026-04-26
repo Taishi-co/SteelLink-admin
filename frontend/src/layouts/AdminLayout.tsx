@@ -13,6 +13,7 @@ import {
   SafetyOutlined,
   MenuOutlined,
   AppstoreOutlined,
+  FileTextOutlined,
 } from '@ant-design/icons'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../store/useAuthStore'
@@ -51,6 +52,11 @@ const menuItems = [
       { key: '/product/category', icon: <AppstoreOutlined />, label: '类目配置' },
     ],
   },
+  {
+    key: '/log',
+    icon: <FileTextOutlined />,
+    label: '操作日志',
+  },
 ]
 
 const pageMeta: Record<string, { title: string; description: string }> = {
@@ -63,6 +69,7 @@ const pageMeta: Record<string, { title: string; description: string }> = {
   '/product': { title: '商品管理', description: '商品信息与审核管理' },
   '/product/order': { title: '订单管理', description: '交易订单与履约管理' },
   '/product/category': { title: '类目配置', description: '商品类目结构管理' },
+  '/log': { title: '操作日志', description: '管理员操作审计日志' },
 }
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {

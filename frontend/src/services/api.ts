@@ -251,3 +251,29 @@ export const categoryApi = {
   update: (id: number, data: Partial<CategoryItem>) => put(`/product-categories/${id}`, data),
   delete: (id: number) => del(`/product-categories/${id}`),
 }
+
+export interface OperationLogItem {
+  id: number
+  adminId: number
+  adminName: string
+  module: string
+  action: string
+  method: string
+  path: string
+  ip: string
+  requestBody?: string
+  responseCode: number
+  createdAt: string
+}
+
+export interface OperationLogParams extends PageParams {
+  module?: string
+  action?: string
+  adminName?: string
+  startDate?: string
+  endDate?: string
+}
+
+export const operationLogApi = {
+  list: (params: OperationLogParams) => get<PageResult<OperationLogItem>>('/operation-logs', { params }),
+}
