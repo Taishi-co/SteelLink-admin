@@ -175,7 +175,7 @@ func Login(c *gin.Context) {
 
 			db.ExecContext(ctx, `UPDATE admin_users SET login_fail_count = 0, locked_until = NULL, updated_at = NOW() WHERE id = ?`, id)
 
-			token, err := auth.GenerateAdminToken(id, username, realName)
+			token, err := auth.GenerateAdminToken(id, username, realName, roleID)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "failed to generate token"})
 				return
@@ -208,7 +208,7 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	token, err := auth.GenerateAdminToken(1, defaultAdminUsername(), defaultAdminRealName())
+	token, err := auth.GenerateAdminToken(1, defaultAdminUsername(), defaultAdminRealName(), 1)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"code":    500,

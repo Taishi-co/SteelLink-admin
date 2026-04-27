@@ -8,7 +8,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// Auth is a JWT authentication middleware
 func Auth() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
@@ -21,7 +20,6 @@ func Auth() gin.HandlerFunc {
 			return
 		}
 
-		// Extract token from Bearer header
 		parts := strings.SplitN(authHeader, " ", 2)
 		if len(parts) != 2 || parts[0] != "Bearer" {
 			c.JSON(http.StatusUnauthorized, gin.H{
@@ -55,6 +53,43 @@ func Auth() gin.HandlerFunc {
 		c.Set("admin_id", claims.AdminID)
 		c.Set("admin_username", claims.Username)
 		c.Set("admin_real_name", claims.RealName)
+		c.Set("admin_role_id", claims.RoleID)
 		c.Next()
 	}
+}
+
+func RequireRole(roleIDs ...int) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		roleID, exists := c.Get("admin_role_id")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"code":    401,
+				"message": "unauthorized",
+			})
+			c.Abort()
+			return
+		}
+
+		adminRoleID := roleID.(int)
+		for _, id := range roleIDs {
+			if adminRoleID == id {
+				c.Next()
+				return
+			}
+		}
+
+		c.JSON(http.StatusForbidden, gin.H{
+			"code":    403,
+			"message": "forbidden: insufficient role permissions",
+		})
+		c.Abort()
+	}
+}
+
+func IsSuperAdmin(c *gin.Context) bool {
+	roleID, exists := c.Get("admin_role_id")
+	if !exists {
+		return false
+	}
+	return roleID.(int) == 1
 }

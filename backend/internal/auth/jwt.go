@@ -11,14 +11,16 @@ type AdminClaims struct {
 	AdminID  int64  `json:"admin_id"`
 	Username string `json:"username"`
 	RealName string `json:"real_name"`
+	RoleID   int    `json:"role_id"`
 	jwt.RegisteredClaims
 }
 
-func GenerateAdminToken(adminID int64, username, realName string) (string, error) {
+func GenerateAdminToken(adminID int64, username, realName string, roleID int) (string, error) {
 	claims := AdminClaims{
 		AdminID:  adminID,
 		Username: username,
 		RealName: realName,
+		RoleID:   roleID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
