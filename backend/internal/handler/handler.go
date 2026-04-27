@@ -558,11 +558,20 @@ func GetMyMenus(c *gin.Context) {
 	}
 
 	rows, err := db.QueryContext(ctx, `
-		SELECT m.id, m.parent_id, m.name, COALESCE(m.path, ''), COALESCE(m.component, ''), COALESCE(m.icon, ''), m.type, COALESCE(m.permission, ''), m.status, m.sort
-		FROM admin_menus m
-		INNER JOIN admin_role_menus rm ON rm.menu_id = m.id
-		WHERE rm.role_id = ? AND m.deleted_at IS NULL AND m.status = 1
-		ORDER BY m.sort ASC, m.id ASC`, intRoleID)
+		WITH RECURSIVE role_menus AS (
+			SELECT m.id, m.parent_id, m.name, m.path, m.component, m.icon, m.type, m.permission, m.status, m.sort
+			FROM admin_menus m
+			INNER JOIN admin_role_menus rm ON rm.menu_id = m.id
+			WHERE rm.role_id = ? AND m.deleted_at IS NULL AND m.status = 1
+			UNION
+			SELECT p.id, p.parent_id, p.name, p.path, p.component, p.icon, p.type, p.permission, p.status, p.sort
+			FROM admin_menus p
+			INNER JOIN role_menus c ON c.parent_id = p.id
+			WHERE p.deleted_at IS NULL AND p.status = 1
+		)
+		SELECT id, parent_id, name, COALESCE(path, ''), COALESCE(component, ''), COALESCE(icon, ''), type, COALESCE(permission, ''), status, sort
+		FROM role_menus
+		ORDER BY sort ASC, id ASC`, intRoleID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 		return

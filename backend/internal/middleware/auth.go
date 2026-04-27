@@ -70,7 +70,23 @@ func RequireRole(roleIDs ...int) gin.HandlerFunc {
 			return
 		}
 
-		adminRoleID := roleID.(int)
+		var adminRoleID int
+		switch v := roleID.(type) {
+		case int:
+			adminRoleID = v
+		case int64:
+			adminRoleID = int(v)
+		case float64:
+			adminRoleID = int(v)
+		default:
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"code":    401,
+				"message": "unauthorized: invalid role id type",
+			})
+			c.Abort()
+			return
+		}
+
 		for _, id := range roleIDs {
 			if adminRoleID == id {
 				c.Next()
@@ -91,5 +107,14 @@ func IsSuperAdmin(c *gin.Context) bool {
 	if !exists {
 		return false
 	}
-	return roleID.(int) == 1
+	switch v := roleID.(type) {
+	case int:
+		return v == 1
+	case int64:
+		return v == 1
+	case float64:
+		return v == 1
+	default:
+		return false
+	}
 }
