@@ -1,24 +1,42 @@
 package auth
 
 import (
+	"log"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 )
 
+var jwtSecretOnce sync.Once
+
+func EnsureJWTSecret() {
+	jwtSecretOnce.Do(func() {
+		if os.Getenv("JWT_SECRET") == "" {
+			env := os.Getenv("APP_ENV")
+			if env == "production" || env == "prod" {
+				log.Fatal("FATAL: JWT_SECRET must be set in production environment")
+			}
+			log.Println("WARNING: JWT_SECRET not set, using insecure dev default. Do NOT use in production!")
+		}
+	})
+}
+
 type AdminClaims struct {
 	AdminID  int64  `json:"admin_id"`
 	Username string `json:"username"`
 	RealName string `json:"real_name"`
+	RoleID   int    `json:"role_id"`
 	jwt.RegisteredClaims
 }
 
-func GenerateAdminToken(adminID int64, username, realName string) (string, error) {
+func GenerateAdminToken(adminID int64, username, realName string, roleID int) (string, error) {
 	claims := AdminClaims{
 		AdminID:  adminID,
 		Username: username,
 		RealName: realName,
+		RoleID:   roleID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -47,6 +65,7 @@ func ParseAdminToken(tokenString string) (*AdminClaims, error) {
 }
 
 func getJWTSecret() string {
+	EnsureJWTSecret()
 	if value := os.Getenv("JWT_SECRET"); value != "" {
 		return value
 	}
