@@ -250,6 +250,7 @@ func GetAdminInfo(c *gin.Context) {
 	adminID, _ := c.Get("admin_id")
 	username, _ := c.Get("admin_username")
 	realName, _ := c.Get("admin_real_name")
+	roleID, _ := c.Get("admin_role_id")
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
@@ -258,7 +259,7 @@ func GetAdminInfo(c *gin.Context) {
 			"id":       adminID,
 			"username": username,
 			"realName": realName,
-			"roleId":   1,
+			"roleId":   roleID,
 		},
 	})
 }
@@ -518,6 +519,57 @@ func DeleteAdmin(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": true})
+}
+
+func GetMyMenus(c *gin.Context) {
+	roleID, _ := c.Get("admin_role_id")
+	intRoleID := 1
+	if v, ok := roleID.(int); ok {
+		intRoleID = v
+	}
+
+	db := database.GetDB()
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	if db == nil || !tableExists(ctx, db, "admin_menus") {
+		c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": []interface{}{}})
+		return
+	}
+
+	if intRoleID == 1 {
+		rows, err := db.QueryContext(ctx, `
+			SELECT id, parent_id, name, COALESCE(path, ''), COALESCE(component, ''), COALESCE(icon, ''), type, COALESCE(permission, ''), status, sort
+			FROM admin_menus WHERE deleted_at IS NULL AND status = 1
+			ORDER BY sort ASC, id ASC`)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+			return
+		}
+		defer rows.Close()
+		menus := scanMenuRows(rows)
+		c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": buildMenuTree(menus)})
+		return
+	}
+
+	if !tableExists(ctx, db, "admin_role_menus") {
+		c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": []interface{}{}})
+		return
+	}
+
+	rows, err := db.QueryContext(ctx, `
+		SELECT m.id, m.parent_id, m.name, COALESCE(m.path, ''), COALESCE(m.component, ''), COALESCE(m.icon, ''), m.type, COALESCE(m.permission, ''), m.status, m.sort
+		FROM admin_menus m
+		INNER JOIN admin_role_menus rm ON rm.menu_id = m.id
+		WHERE rm.role_id = ? AND m.deleted_at IS NULL AND m.status = 1
+		ORDER BY m.sort ASC, m.id ASC`, intRoleID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+	defer rows.Close()
+	menus := scanMenuRows(rows)
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": buildMenuTree(menus)})
 }
 
 func ListOperationLogs(c *gin.Context) {

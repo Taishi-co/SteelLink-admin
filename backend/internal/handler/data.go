@@ -614,3 +614,31 @@ func parseWarehouseInfo(raw sql.NullString) warehouseInfo {
 	_ = json.Unmarshal([]byte(raw.String), &info)
 	return info
 }
+
+func scanMenuRows(rows *sql.Rows) []menuItem {
+	items := make([]menuItem, 0)
+	for rows.Next() {
+		var m menuItem
+		if err := rows.Scan(&m.ID, &m.ParentID, &m.Name, &m.Path, &m.Component, &m.Icon, &m.Type, &m.Permission, &m.Status, &m.Sort); err != nil {
+			continue
+		}
+		items = append(items, m)
+	}
+	return items
+}
+
+func buildMenuTree(items []menuItem) []menuItem {
+	nodeMap := make(map[int64]*menuItem)
+	roots := make([]menuItem, 0)
+	for i := range items {
+		nodeMap[items[i].ID] = &items[i]
+	}
+	for i := range items {
+		if items[i].ParentID == 0 {
+			roots = append(roots, items[i])
+		} else if parent, ok := nodeMap[items[i].ParentID]; ok {
+			parent.Children = append(parent.Children, items[i])
+		}
+	}
+	return roots
+}

@@ -41,6 +41,7 @@ export const authApi = {
   login: (params: LoginParams) => post<LoginResult>('/login', params),
   logout: () => post('/logout'),
   getInfo: () => get<LoginResult['adminInfo']>('/admin/info'),
+  getMyMenus: () => get<MenuItem[]>('/admin/menus'),
 }
 
 export const dashboardApi = {

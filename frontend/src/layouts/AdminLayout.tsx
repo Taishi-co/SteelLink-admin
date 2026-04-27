@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Layout, Menu, Avatar, Dropdown, Button, theme } from 'antd'
+import { useState, useEffect, useMemo } from 'react'
+import { Layout, Menu, Avatar, Dropdown, Button, theme, Spin } from 'antd'
 import {
   DashboardOutlined,
   SettingOutlined,
@@ -15,14 +15,61 @@ import {
   AppstoreOutlined,
   FileTextOutlined,
   ThunderboltOutlined,
+  ShopOutlined,
+  SolutionOutlined,
+  HomeOutlined,
+  BarChartOutlined,
+  ProfileOutlined,
+  PartitionOutlined,
+  ControlOutlined,
+  ReconciliationOutlined,
+  ContainerOutlined,
+  AuditOutlined,
+  ToolOutlined,
+  ApiOutlined,
+  CloudServerOutlined,
+  RocketOutlined,
+  ExperimentOutlined,
 } from '@ant-design/icons'
+import type { MenuProps } from 'antd'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../store/useAuthStore'
+import { authApi } from '../services/api'
+import type { MenuItem as ApiMenuItem } from '../services/api'
 import styles from './AdminLayout.module.css'
 
 const { Header, Sider, Content } = Layout
 
-const menuItems = [
+const iconMap: Record<string, React.ReactNode> = {
+  DashboardOutlined: <DashboardOutlined />,
+  SettingOutlined: <SettingOutlined />,
+  UserOutlined: <UserOutlined />,
+  BankOutlined: <BankOutlined />,
+  ShoppingOutlined: <ShoppingOutlined />,
+  TeamOutlined: <TeamOutlined />,
+  SafetyOutlined: <SafetyOutlined />,
+  MenuOutlined: <MenuOutlined />,
+  AppstoreOutlined: <AppstoreOutlined />,
+  FileTextOutlined: <FileTextOutlined />,
+  ThunderboltOutlined: <ThunderboltOutlined />,
+  ShopOutlined: <ShopOutlined />,
+  SolutionOutlined: <SolutionOutlined />,
+  HomeOutlined: <HomeOutlined />,
+  BarChartOutlined: <BarChartOutlined />,
+  ProfileOutlined: <ProfileOutlined />,
+  PartitionOutlined: <PartitionOutlined />,
+  ControlOutlined: <ControlOutlined />,
+  ReconciliationOutlined: <ReconciliationOutlined />,
+  ContainerOutlined: <ContainerOutlined />,
+  AuditOutlined: <AuditOutlined />,
+  ToolOutlined: <ToolOutlined />,
+  ApiOutlined: <ApiOutlined />,
+  CloudServerOutlined: <CloudServerOutlined />,
+  RocketOutlined: <RocketOutlined />,
+  ExperimentOutlined: <ExperimentOutlined />,
+}
+
+const fallbackMenuItems: MenuProps['items'] = [
   { key: '/dashboard', icon: <DashboardOutlined />, label: '数据概览' },
   {
     key: '/system',
@@ -68,6 +115,23 @@ const menuItems = [
   },
 ]
 
+function apiMenuToAntd(items: ApiMenuItem[]): MenuProps['items'] {
+  if (!items || items.length === 0) return fallbackMenuItems
+
+  return items.map((item) => {
+    const icon = item.icon ? (iconMap[item.icon] || null) : null
+    const result: any = {
+      key: item.path || String(item.id),
+      icon,
+      label: item.name,
+    }
+    if (item.children && item.children.length > 0) {
+      result.children = apiMenuToAntd(item.children)
+    }
+    return result
+  })
+}
+
 const pageMeta: Record<string, { title: string; description: string }> = {
   '/dashboard': { title: '数据概览', description: '平台数据总览与待办事项' },
   '/system/admin': { title: '管理员管理', description: '管理后台账号与权限' },
@@ -84,12 +148,33 @@ const pageMeta: Record<string, { title: string; description: string }> = {
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false)
+  const [menuLoading, setMenuLoading] = useState(true)
+  const [apiMenus, setApiMenus] = useState<ApiMenuItem[]>([])
   const navigate = useNavigate()
   const location = useLocation()
   const { adminInfo, logout } = useAuthStore()
   const {
     token: { colorBgContainer, borderRadiusLG },
   } = theme.useToken()
+
+  useEffect(() => {
+    authApi.getMyMenus()
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setApiMenus(data)
+        }
+      })
+      .catch(() => {})
+      .finally(() => setMenuLoading(false))
+  }, [])
+
+  const menuItems = useMemo(() => {
+    if (apiMenus.length > 0) {
+      return apiMenuToAntd(apiMenus)
+    }
+    return fallbackMenuItems
+  }, [apiMenus])
+
   const currentMeta = pageMeta[location.pathname] ?? pageMeta['/dashboard']
 
   const getOpenKeys = () => {
@@ -130,14 +215,20 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             </div>
           )}
         </div>
-        <Menu
-          theme="dark"
-          mode="inline"
-          selectedKeys={[location.pathname]}
-          defaultOpenKeys={getOpenKeys()}
-          items={menuItems}
-          onClick={handleMenuClick}
-        />
+        {menuLoading ? (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: '24px 0' }}>
+            <Spin />
+          </div>
+        ) : (
+          <Menu
+            theme="dark"
+            mode="inline"
+            selectedKeys={[location.pathname]}
+            defaultOpenKeys={getOpenKeys()}
+            items={menuItems}
+            onClick={handleMenuClick}
+          />
+        )}
       </Sider>
       <Layout>
         <Header className={styles.header} style={{ background: colorBgContainer }}>

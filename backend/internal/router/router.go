@@ -29,6 +29,7 @@ func RegisterRoutes(r *gin.Engine) {
 		{
 			protected.POST("/logout", handler.Logout)
 			protected.GET("/admin/info", handler.GetAdminInfo)
+			protected.GET("/admin/menus", handler.GetMyMenus)
 			protected.GET("/dashboard/stats", handler.GetDashboardStats)
 
 			protected.GET("/users", handler.ListUsers)
