@@ -1080,8 +1080,13 @@ func ListUsers(c *gin.Context) {
 		return
 	}
 
-	hasEnterpriseID := columnExists(ctx, db, "users", "enterprise_id")
-	hasIdentityStatus := columnExists(ctx, db, "users", "identity_status")
+	userCols := columnsExist(ctx, db, "users")
+	hasEnterpriseID := userCols["enterprise_id"]
+	hasIdentityStatus := userCols["identity_status"]
+	hasIDCard := userCols["id_card"]
+	hasIDCardFrontURL := userCols["id_card_front_url"]
+	hasIDCardBackURL := userCols["id_card_back_url"]
+	hasIdentityReject := userCols["identity_reject"]
 	query := `
 		SELECT id, username, COALESCE(phone, ''), COALESCE(email, ''), status, created_at`
 	if hasEnterpriseID {
@@ -1089,6 +1094,18 @@ func ListUsers(c *gin.Context) {
 	}
 	if hasIdentityStatus {
 		query += `, COALESCE(identity_status, 0)`
+	}
+	if hasIDCard {
+		query += `, COALESCE(id_card, '')`
+	}
+	if hasIDCardFrontURL {
+		query += `, COALESCE(id_card_front_url, '')`
+	}
+	if hasIDCardBackURL {
+		query += `, COALESCE(id_card_back_url, '')`
+	}
+	if hasIdentityReject {
+		query += `, COALESCE(identity_reject, '')`
 	}
 	query += ` FROM users WHERE deleted_at IS NULL ORDER BY id DESC LIMIT ? OFFSET ?`
 
@@ -1109,6 +1126,18 @@ func ListUsers(c *gin.Context) {
 		}
 		if hasIdentityStatus {
 			scanTargets = append(scanTargets, &item.IdentityStatus)
+		}
+		if hasIDCard {
+			scanTargets = append(scanTargets, &item.IDCard)
+		}
+		if hasIDCardFrontURL {
+			scanTargets = append(scanTargets, &item.IDCardFrontURL)
+		}
+		if hasIDCardBackURL {
+			scanTargets = append(scanTargets, &item.IDCardBackURL)
+		}
+		if hasIdentityReject {
+			scanTargets = append(scanTargets, &item.IdentityReject)
 		}
 		if err := rows.Scan(scanTargets...); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
@@ -1134,9 +1163,14 @@ func GetUser(c *gin.Context) {
 	defer cancel()
 
 	id := c.Param("id")
-	hasEnterpriseID := columnExists(ctx, db, "users", "enterprise_id")
-	hasRealName := columnExists(ctx, db, "users", "real_name")
-	hasIdentityStatus := columnExists(ctx, db, "users", "identity_status")
+	userCols := columnsExist(ctx, db, "users")
+	hasEnterpriseID := userCols["enterprise_id"]
+	hasRealName := userCols["real_name"]
+	hasIdentityStatus := userCols["identity_status"]
+	hasIDCard := userCols["id_card"]
+	hasIDCardFrontURL := userCols["id_card_front_url"]
+	hasIDCardBackURL := userCols["id_card_back_url"]
+	hasIdentityReject := userCols["identity_reject"]
 
 	query := `SELECT id, username, COALESCE(phone, ''), COALESCE(email, ''), status, created_at`
 	if hasEnterpriseID {
@@ -1147,6 +1181,18 @@ func GetUser(c *gin.Context) {
 	}
 	if hasIdentityStatus {
 		query += `, COALESCE(identity_status, 0)`
+	}
+	if hasIDCard {
+		query += `, COALESCE(id_card, '')`
+	}
+	if hasIDCardFrontURL {
+		query += `, COALESCE(id_card_front_url, '')`
+	}
+	if hasIDCardBackURL {
+		query += `, COALESCE(id_card_back_url, '')`
+	}
+	if hasIdentityReject {
+		query += `, COALESCE(identity_reject, '')`
 	}
 	query += ` FROM users WHERE deleted_at IS NULL AND id = ? LIMIT 1`
 
@@ -1163,6 +1209,18 @@ func GetUser(c *gin.Context) {
 	}
 	if hasIdentityStatus {
 		scanTargets = append(scanTargets, &item.IdentityStatus)
+	}
+	if hasIDCard {
+		scanTargets = append(scanTargets, &item.IDCard)
+	}
+	if hasIDCardFrontURL {
+		scanTargets = append(scanTargets, &item.IDCardFrontURL)
+	}
+	if hasIDCardBackURL {
+		scanTargets = append(scanTargets, &item.IDCardBackURL)
+	}
+	if hasIdentityReject {
+		scanTargets = append(scanTargets, &item.IdentityReject)
 	}
 
 	if err := row.Scan(scanTargets...); err != nil {
@@ -1466,6 +1524,16 @@ func AuditEnterprise(c *gin.Context) {
 	if affected == 0 {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "enterprise not found"})
 		return
+	}
+
+	var enterpriseCode string
+	row := db.QueryRowContext(ctx, `SELECT enterprise_code FROM enterprises WHERE id = ? AND deleted_at IS NULL`, c.Param("id"))
+	if err := row.Scan(&enterpriseCode); err == nil && enterpriseCode != "" {
+		if req.Status == 1 {
+			db.ExecContext(ctx, `UPDATE users SET role = 'enterprise', updated_at = NOW() WHERE enterprise_code = ? AND deleted_at IS NULL`, enterpriseCode)
+		} else if req.Status == 2 {
+			db.ExecContext(ctx, `UPDATE users SET role = 'personal', updated_at = NOW() WHERE enterprise_code = ? AND deleted_at IS NULL`, enterpriseCode)
+		}
 	}
 
 	logOpFromContext(c, db, "enterprise", "audit", 0, fmt.Sprintf(`{"id":"%s","status":%d}`, c.Param("id"), req.Status))
