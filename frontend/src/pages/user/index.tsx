@@ -91,28 +91,14 @@ export default function UserList() {
       render: (v: string) => formatDateTime(v),
     },
     {
-      title: '操作', key: 'actions', width: 220,
+      title: '操作', key: 'actions', width: 200,
       render: (_, record) => (
         <Space>
           <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => setSelectedUser(record)}>详情</Button>
           {record.identityStatus === 1 && (
-            <>
-              <Popconfirm
-                title="确认通过该用户的实名认证？"
-                onConfirm={() => auditIdentity({ id: record.id, data: { status: 2 } })}
-              >
-                <Button type="link" size="small" icon={<CheckCircleOutlined />} style={{ color: '#22c55e' }}>通过</Button>
-              </Popconfirm>
-              <Button
-                type="link"
-                size="small"
-                danger
-                icon={<CloseCircleOutlined />}
-                onClick={() => setAuditModal({ open: true, userId: record.id, action: 'reject' })}
-              >
-                驳回
-              </Button>
-            </>
+            <Button type="link" size="small" icon={<IdcardOutlined />} style={{ color: '#f59e0b' }} onClick={() => setSelectedUser(record)}>
+              审核
+            </Button>
           )}
           <Popconfirm
             title={`确认${record.status === 1 ? '停用' : '启用'}该用户？`}
