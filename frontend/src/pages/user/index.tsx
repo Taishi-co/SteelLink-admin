@@ -1,10 +1,10 @@
 import { useState } from 'react'
-import { Card, Table, Tag, Button, Space, Input, Drawer, Descriptions, Popconfirm, message, Modal, Form } from 'antd'
+import { Card, Table, Tag, Button, Space, Input, Drawer, Descriptions, Popconfirm, message, Modal, Form, Image, Divider, Alert } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { userApi, UserItem, PageParams } from '../../services/api'
 import { formatDateTime } from '../../utils/format'
-import { SearchOutlined, EyeOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons'
+import { SearchOutlined, EyeOutlined, CheckCircleOutlined, CloseCircleOutlined, IdcardOutlined } from '@ant-design/icons'
 
 const identityStatusMap: Record<number, { color: string; text: string }> = {
   0: { color: 'default', text: '未提交' },
@@ -44,6 +44,9 @@ export default function UserList() {
       void queryClient.invalidateQueries({ queryKey: ['users'] })
       setAuditModal({ open: false, userId: 0, action: 'approve' })
       auditForm.resetFields()
+      if (selectedUser) {
+        setSelectedUser({ ...selectedUser, identityStatus: 2 })
+      }
     },
     onError: () => message.error('审核失败'),
   })
@@ -56,6 +59,10 @@ export default function UserList() {
         data: { status, reject: auditModal.action === 'reject' ? values.reject : undefined },
       })
     })
+  }
+
+  const hasIdentityInfo = (user: UserItem) => {
+    return user.identityStatus !== undefined && user.identityStatus > 0
   }
 
   const columns: ColumnsType<UserItem> = [
@@ -154,51 +161,135 @@ export default function UserList() {
 
       <Drawer
         title={`用户详情 · ${selectedUser?.username || ''}`}
-        width={480}
+        width={520}
         open={selectedUser !== null}
         onClose={() => setSelectedUser(null)}
         destroyOnClose
       >
         {selectedUser && (
-          <Descriptions bordered column={1} size="small">
-            <Descriptions.Item label="ID">{selectedUser.id}</Descriptions.Item>
-            <Descriptions.Item label="账号">{selectedUser.username}</Descriptions.Item>
-            <Descriptions.Item label="姓名">{selectedUser.realName || '-'}</Descriptions.Item>
-            <Descriptions.Item label="手机号">{selectedUser.phone || '-'}</Descriptions.Item>
-            <Descriptions.Item label="邮箱">{selectedUser.email || '-'}</Descriptions.Item>
-            <Descriptions.Item label="企业 ID">{selectedUser.enterpriseId || '未绑定'}</Descriptions.Item>
-            <Descriptions.Item label="实名状态">
-              <Tag color={identityStatusMap[selectedUser.identityStatus ?? 0]?.color}>
-                {identityStatusMap[selectedUser.identityStatus ?? 0]?.text || '未知'}
-              </Tag>
-            </Descriptions.Item>
-            <Descriptions.Item label="账号状态">
-              <Tag color={selectedUser.status === 1 ? 'green' : 'red'}>{selectedUser.status === 1 ? '启用' : '停用'}</Tag>
-            </Descriptions.Item>
-            <Descriptions.Item label="注册时间">{formatDateTime(selectedUser.createdAt)}</Descriptions.Item>
-            {selectedUser.identityStatus === 1 && (
-              <Descriptions.Item label="实名审核">
-                <Space>
-                  <Button
-                    type="primary"
-                    size="small"
-                    icon={<CheckCircleOutlined />}
-                    onClick={() => auditIdentity({ id: selectedUser.id, data: { status: 2 } })}
-                  >
-                    通过
-                  </Button>
-                  <Button
-                    danger
-                    size="small"
-                    icon={<CloseCircleOutlined />}
-                    onClick={() => setAuditModal({ open: true, userId: selectedUser.id, action: 'reject' })}
-                  >
-                    驳回
-                  </Button>
-                </Space>
+          <>
+            <Descriptions bordered column={1} size="small">
+              <Descriptions.Item label="ID">{selectedUser.id}</Descriptions.Item>
+              <Descriptions.Item label="账号">{selectedUser.username}</Descriptions.Item>
+              <Descriptions.Item label="姓名">{selectedUser.realName || '-'}</Descriptions.Item>
+              <Descriptions.Item label="手机号">{selectedUser.phone || '-'}</Descriptions.Item>
+              <Descriptions.Item label="邮箱">{selectedUser.email || '-'}</Descriptions.Item>
+              <Descriptions.Item label="企业 ID">{selectedUser.enterpriseId || '未绑定'}</Descriptions.Item>
+              <Descriptions.Item label="账号状态">
+                <Tag color={selectedUser.status === 1 ? 'green' : 'red'}>{selectedUser.status === 1 ? '启用' : '停用'}</Tag>
               </Descriptions.Item>
+              <Descriptions.Item label="注册时间">{formatDateTime(selectedUser.createdAt)}</Descriptions.Item>
+            </Descriptions>
+
+            <Divider orientation="left" orientationMargin={0}>
+              <IdcardOutlined className="mr-1" />
+              实名认证信息
+            </Divider>
+
+            {hasIdentityInfo(selectedUser) ? (
+              <>
+                {selectedUser.identityStatus === 1 && (
+                  <Alert
+                    type="warning"
+                    message="该用户已提交实名认证，等待审核"
+                    showIcon
+                    className="mb-4"
+                  />
+                )}
+                {selectedUser.identityStatus === 2 && (
+                  <Alert
+                    type="success"
+                    message="该用户实名认证已通过"
+                    showIcon
+                    className="mb-4"
+                  />
+                )}
+                {selectedUser.identityStatus === 3 && (
+                  <Alert
+                    type="error"
+                    message={`实名认证已驳回：${selectedUser.identityReject || '无驳回原因'}`}
+                    showIcon
+                    className="mb-4"
+                  />
+                )}
+
+                <Descriptions bordered column={1} size="small">
+                  <Descriptions.Item label="认证状态">
+                    <Tag color={identityStatusMap[selectedUser.identityStatus ?? 0]?.color}>
+                      {identityStatusMap[selectedUser.identityStatus ?? 0]?.text || '未知'}
+                    </Tag>
+                  </Descriptions.Item>
+                  {selectedUser.realName && selectedUser.realName !== selectedUser.username && (
+                    <Descriptions.Item label="真实姓名">{selectedUser.realName}</Descriptions.Item>
+                  )}
+                  {selectedUser.idCard && (
+                    <Descriptions.Item label="身份证号">{selectedUser.idCard}</Descriptions.Item>
+                  )}
+                  {selectedUser.identityReject && selectedUser.identityStatus === 3 && (
+                    <Descriptions.Item label="驳回原因">
+                      <span className="text-red-500">{selectedUser.identityReject}</span>
+                    </Descriptions.Item>
+                  )}
+                </Descriptions>
+
+                {(selectedUser.idCardFrontUrl || selectedUser.idCardBackUrl) && (
+                  <div className="mt-4">
+                    <div className="text-gray-500 text-sm mb-2">证件照片</div>
+                    <Space size="middle">
+                      {selectedUser.idCardFrontUrl && (
+                        <div className="text-center">
+                          <Image
+                            src={selectedUser.idCardFrontUrl}
+                            alt="身份证正面"
+                            width={200}
+                            className="rounded border object-cover"
+                            fallback="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjEyNSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjEyNSIgZmlsbD0iI2YwZjBmMCIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBkb21pbmFudC1iYXNlbGluZT0ibWlkZGxlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSIjY2NjIiBmb250LXNpemU9IjE0Ij7lm77niYc0MDQ8L3RleHQ+PC9zdmc+"
+                          />
+                          <div className="text-gray-400 text-xs mt-1">人像面</div>
+                        </div>
+                      )}
+                      {selectedUser.idCardBackUrl && (
+                        <div className="text-center">
+                          <Image
+                            src={selectedUser.idCardBackUrl}
+                            alt="身份证背面"
+                            width={200}
+                            className="rounded border object-cover"
+                            fallback="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjEyNSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjEyNSIgZmlsbD0iI2YwZjBmMCIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBkb21pbmFudC1iYXNlbGluZT0ibWlkZGxlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSIjY2NjIiBmb250LXNpemU9IjE0Ij7lm77niYc0MDQ8L3RleHQ+PC9zdmc+"
+                          />
+                          <div className="text-gray-400 text-xs mt-1">国徽面</div>
+                        </div>
+                      )}
+                    </Space>
+                  </div>
+                )}
+
+                {selectedUser.identityStatus === 1 && (
+                  <div className="mt-4 flex gap-2">
+                    <Button
+                      type="primary"
+                      icon={<CheckCircleOutlined />}
+                      onClick={() => auditIdentity({ id: selectedUser.id, data: { status: 2 } })}
+                    >
+                      审核通过
+                    </Button>
+                    <Button
+                      danger
+                      icon={<CloseCircleOutlined />}
+                      onClick={() => setAuditModal({ open: true, userId: selectedUser.id, action: 'reject' })}
+                    >
+                      驳回
+                    </Button>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="text-center py-6 text-gray-400">
+                <IdcardOutlined className="text-3xl mb-2 block" />
+                该用户尚未提交实名认证
+              </div>
             )}
-          </Descriptions>
+          </>
         )}
       </Drawer>
 

@@ -123,6 +123,10 @@ export interface UserItem {
   avatar?: string
   enterpriseId?: number
   identityStatus?: number
+  idCard?: string
+  idCardFrontUrl?: string
+  idCardBackUrl?: string
+  identityReject?: string
   status: number
   createdAt: string
 }

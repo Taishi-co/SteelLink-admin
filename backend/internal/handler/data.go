@@ -71,15 +71,19 @@ type menuItem struct {
 }
 
 type userItem struct {
-	ID             int64     `json:"id"`
-	Username       string    `json:"username"`
-	Phone          string    `json:"phone,omitempty"`
-	Email          string    `json:"email,omitempty"`
-	RealName       string    `json:"realName,omitempty"`
-	EnterpriseID   *int64    `json:"enterpriseId,omitempty"`
-	IdentityStatus int       `json:"identityStatus"`
-	Status         int       `json:"status"`
-	CreatedAt      time.Time `json:"createdAt"`
+	ID               int64     `json:"id"`
+	Username         string    `json:"username"`
+	Phone            string    `json:"phone,omitempty"`
+	Email            string    `json:"email,omitempty"`
+	RealName         string    `json:"realName,omitempty"`
+	EnterpriseID     *int64    `json:"enterpriseId,omitempty"`
+	IdentityStatus   int       `json:"identityStatus"`
+	IDCard           string    `json:"idCard,omitempty"`
+	IDCardFrontURL   string    `json:"idCardFrontUrl,omitempty"`
+	IDCardBackURL    string    `json:"idCardBackUrl,omitempty"`
+	IdentityReject   string    `json:"identityReject,omitempty"`
+	Status           int       `json:"status"`
+	CreatedAt        time.Time `json:"createdAt"`
 }
 
 type enterpriseItem struct {

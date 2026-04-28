@@ -1082,6 +1082,10 @@ func ListUsers(c *gin.Context) {
 
 	hasEnterpriseID := columnExists(ctx, db, "users", "enterprise_id")
 	hasIdentityStatus := columnExists(ctx, db, "users", "identity_status")
+	hasIDCard := columnExists(ctx, db, "users", "id_card")
+	hasIDCardFrontURL := columnExists(ctx, db, "users", "id_card_front_url")
+	hasIDCardBackURL := columnExists(ctx, db, "users", "id_card_back_url")
+	hasIdentityReject := columnExists(ctx, db, "users", "identity_reject")
 	query := `
 		SELECT id, username, COALESCE(phone, ''), COALESCE(email, ''), status, created_at`
 	if hasEnterpriseID {
@@ -1089,6 +1093,18 @@ func ListUsers(c *gin.Context) {
 	}
 	if hasIdentityStatus {
 		query += `, COALESCE(identity_status, 0)`
+	}
+	if hasIDCard {
+		query += `, COALESCE(id_card, '')`
+	}
+	if hasIDCardFrontURL {
+		query += `, COALESCE(id_card_front_url, '')`
+	}
+	if hasIDCardBackURL {
+		query += `, COALESCE(id_card_back_url, '')`
+	}
+	if hasIdentityReject {
+		query += `, COALESCE(identity_reject, '')`
 	}
 	query += ` FROM users WHERE deleted_at IS NULL ORDER BY id DESC LIMIT ? OFFSET ?`
 
@@ -1109,6 +1125,18 @@ func ListUsers(c *gin.Context) {
 		}
 		if hasIdentityStatus {
 			scanTargets = append(scanTargets, &item.IdentityStatus)
+		}
+		if hasIDCard {
+			scanTargets = append(scanTargets, &item.IDCard)
+		}
+		if hasIDCardFrontURL {
+			scanTargets = append(scanTargets, &item.IDCardFrontURL)
+		}
+		if hasIDCardBackURL {
+			scanTargets = append(scanTargets, &item.IDCardBackURL)
+		}
+		if hasIdentityReject {
+			scanTargets = append(scanTargets, &item.IdentityReject)
 		}
 		if err := rows.Scan(scanTargets...); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
@@ -1137,6 +1165,10 @@ func GetUser(c *gin.Context) {
 	hasEnterpriseID := columnExists(ctx, db, "users", "enterprise_id")
 	hasRealName := columnExists(ctx, db, "users", "real_name")
 	hasIdentityStatus := columnExists(ctx, db, "users", "identity_status")
+	hasIDCard := columnExists(ctx, db, "users", "id_card")
+	hasIDCardFrontURL := columnExists(ctx, db, "users", "id_card_front_url")
+	hasIDCardBackURL := columnExists(ctx, db, "users", "id_card_back_url")
+	hasIdentityReject := columnExists(ctx, db, "users", "identity_reject")
 
 	query := `SELECT id, username, COALESCE(phone, ''), COALESCE(email, ''), status, created_at`
 	if hasEnterpriseID {
@@ -1147,6 +1179,18 @@ func GetUser(c *gin.Context) {
 	}
 	if hasIdentityStatus {
 		query += `, COALESCE(identity_status, 0)`
+	}
+	if hasIDCard {
+		query += `, COALESCE(id_card, '')`
+	}
+	if hasIDCardFrontURL {
+		query += `, COALESCE(id_card_front_url, '')`
+	}
+	if hasIDCardBackURL {
+		query += `, COALESCE(id_card_back_url, '')`
+	}
+	if hasIdentityReject {
+		query += `, COALESCE(identity_reject, '')`
 	}
 	query += ` FROM users WHERE deleted_at IS NULL AND id = ? LIMIT 1`
 
@@ -1163,6 +1207,18 @@ func GetUser(c *gin.Context) {
 	}
 	if hasIdentityStatus {
 		scanTargets = append(scanTargets, &item.IdentityStatus)
+	}
+	if hasIDCard {
+		scanTargets = append(scanTargets, &item.IDCard)
+	}
+	if hasIDCardFrontURL {
+		scanTargets = append(scanTargets, &item.IDCardFrontURL)
+	}
+	if hasIDCardBackURL {
+		scanTargets = append(scanTargets, &item.IDCardBackURL)
+	}
+	if hasIdentityReject {
+		scanTargets = append(scanTargets, &item.IdentityReject)
 	}
 
 	if err := row.Scan(scanTargets...); err != nil {
