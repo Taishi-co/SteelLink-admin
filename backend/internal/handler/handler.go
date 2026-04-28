@@ -1526,6 +1526,16 @@ func AuditEnterprise(c *gin.Context) {
 		return
 	}
 
+	var enterpriseCode string
+	row := db.QueryRowContext(ctx, `SELECT enterprise_code FROM enterprises WHERE id = ? AND deleted_at IS NULL`, c.Param("id"))
+	if err := row.Scan(&enterpriseCode); err == nil && enterpriseCode != "" {
+		if req.Status == 1 {
+			db.ExecContext(ctx, `UPDATE users SET role = 'enterprise', updated_at = NOW() WHERE enterprise_code = ? AND deleted_at IS NULL`, enterpriseCode)
+		} else if req.Status == 2 {
+			db.ExecContext(ctx, `UPDATE users SET role = 'personal', updated_at = NOW() WHERE enterprise_code = ? AND deleted_at IS NULL`, enterpriseCode)
+		}
+	}
+
 	logOpFromContext(c, db, "enterprise", "audit", 0, fmt.Sprintf(`{"id":"%s","status":%d}`, c.Param("id"), req.Status))
 
 	c.JSON(http.StatusOK, gin.H{
