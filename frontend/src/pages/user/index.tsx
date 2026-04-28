@@ -1,15 +1,24 @@
 import { useState } from 'react'
-import { Card, Table, Tag, Button, Space, Input, Drawer, Descriptions, Popconfirm, message } from 'antd'
+import { Card, Table, Tag, Button, Space, Input, Drawer, Descriptions, Popconfirm, message, Modal, Form } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { userApi, UserItem, PageParams } from '../../services/api'
 import { formatDateTime } from '../../utils/format'
-import { SearchOutlined, EyeOutlined } from '@ant-design/icons'
+import { SearchOutlined, EyeOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons'
+
+const identityStatusMap: Record<number, { color: string; text: string }> = {
+  0: { color: 'default', text: '未提交' },
+  1: { color: 'processing', text: '审核中' },
+  2: { color: 'success', text: '已通过' },
+  3: { color: 'error', text: '已驳回' },
+}
 
 export default function UserList() {
   const [params, setParams] = useState<PageParams>({ page: 1, pageSize: 10 })
   const [keyword, setKeyword] = useState('')
   const [selectedUser, setSelectedUser] = useState<UserItem | null>(null)
+  const [auditModal, setAuditModal] = useState<{ open: boolean; userId: number; action: 'approve' | 'reject' }>({ open: false, userId: 0, action: 'approve' })
+  const [auditForm] = Form.useForm()
   const queryClient = useQueryClient()
 
   const queryParams = { ...params, keyword: keyword || undefined }
@@ -28,6 +37,27 @@ export default function UserList() {
     onError: () => message.error('操作失败'),
   })
 
+  const { mutate: auditIdentity } = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: { status: number; reject?: string } }) => userApi.auditIdentity(id, data),
+    onSuccess: () => {
+      message.success('审核完成')
+      void queryClient.invalidateQueries({ queryKey: ['users'] })
+      setAuditModal({ open: false, userId: 0, action: 'approve' })
+      auditForm.resetFields()
+    },
+    onError: () => message.error('审核失败'),
+  })
+
+  const handleAudit = () => {
+    auditForm.validateFields().then((values) => {
+      const status = auditModal.action === 'approve' ? 2 : 3
+      auditIdentity({
+        id: auditModal.userId,
+        data: { status, reject: auditModal.action === 'reject' ? values.reject : undefined },
+      })
+    })
+  }
+
   const columns: ColumnsType<UserItem> = [
     { title: 'ID', dataIndex: 'id', key: 'id', width: 60 },
     { title: '账号', dataIndex: 'username', key: 'username' },
@@ -39,6 +69,13 @@ export default function UserList() {
       render: (v?: number) => v || '-',
     },
     {
+      title: '实名状态', dataIndex: 'identityStatus', key: 'identityStatus', width: 90,
+      render: (status?: number) => {
+        const meta = identityStatusMap[status ?? 0]
+        return <Tag color={meta?.color || 'default'}>{meta?.text || '未知'}</Tag>
+      },
+    },
+    {
       title: '状态', dataIndex: 'status', key: 'status', width: 80,
       render: (status: number) => <Tag color={status === 1 ? 'green' : 'red'}>{status === 1 ? '启用' : '停用'}</Tag>,
     },
@@ -47,10 +84,29 @@ export default function UserList() {
       render: (v: string) => formatDateTime(v),
     },
     {
-      title: '操作', key: 'actions', width: 140,
+      title: '操作', key: 'actions', width: 220,
       render: (_, record) => (
         <Space>
           <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => setSelectedUser(record)}>详情</Button>
+          {record.identityStatus === 1 && (
+            <>
+              <Popconfirm
+                title="确认通过该用户的实名认证？"
+                onConfirm={() => auditIdentity({ id: record.id, data: { status: 2 } })}
+              >
+                <Button type="link" size="small" icon={<CheckCircleOutlined />} style={{ color: '#22c55e' }}>通过</Button>
+              </Popconfirm>
+              <Button
+                type="link"
+                size="small"
+                danger
+                icon={<CloseCircleOutlined />}
+                onClick={() => setAuditModal({ open: true, userId: record.id, action: 'reject' })}
+              >
+                驳回
+              </Button>
+            </>
+          )}
           <Popconfirm
             title={`确认${record.status === 1 ? '停用' : '启用'}该用户？`}
             onConfirm={() => toggleStatus({ id: record.id, status: record.status === 1 ? 0 : 1 })}
@@ -85,7 +141,7 @@ export default function UserList() {
           dataSource={data?.data.data.list || []}
           rowKey="id"
           loading={isLoading}
-          scroll={{ x: 1000 }}
+          scroll={{ x: 1100 }}
           pagination={{
             current: params.page,
             pageSize: params.pageSize,
@@ -111,13 +167,62 @@ export default function UserList() {
             <Descriptions.Item label="手机号">{selectedUser.phone || '-'}</Descriptions.Item>
             <Descriptions.Item label="邮箱">{selectedUser.email || '-'}</Descriptions.Item>
             <Descriptions.Item label="企业 ID">{selectedUser.enterpriseId || '未绑定'}</Descriptions.Item>
-            <Descriptions.Item label="状态">
+            <Descriptions.Item label="实名状态">
+              <Tag color={identityStatusMap[selectedUser.identityStatus ?? 0]?.color}>
+                {identityStatusMap[selectedUser.identityStatus ?? 0]?.text || '未知'}
+              </Tag>
+            </Descriptions.Item>
+            <Descriptions.Item label="账号状态">
               <Tag color={selectedUser.status === 1 ? 'green' : 'red'}>{selectedUser.status === 1 ? '启用' : '停用'}</Tag>
             </Descriptions.Item>
             <Descriptions.Item label="注册时间">{formatDateTime(selectedUser.createdAt)}</Descriptions.Item>
+            {selectedUser.identityStatus === 1 && (
+              <Descriptions.Item label="实名审核">
+                <Space>
+                  <Button
+                    type="primary"
+                    size="small"
+                    icon={<CheckCircleOutlined />}
+                    onClick={() => auditIdentity({ id: selectedUser.id, data: { status: 2 } })}
+                  >
+                    通过
+                  </Button>
+                  <Button
+                    danger
+                    size="small"
+                    icon={<CloseCircleOutlined />}
+                    onClick={() => setAuditModal({ open: true, userId: selectedUser.id, action: 'reject' })}
+                  >
+                    驳回
+                  </Button>
+                </Space>
+              </Descriptions.Item>
+            )}
           </Descriptions>
         )}
       </Drawer>
+
+      <Modal
+        title="驳回实名认证"
+        open={auditModal.open}
+        onOk={handleAudit}
+        onCancel={() => {
+          setAuditModal({ open: false, userId: 0, action: 'approve' })
+          auditForm.resetFields()
+        }}
+        okText="确认驳回"
+        okButtonProps={{ danger: true }}
+      >
+        <Form form={auditForm} layout="vertical">
+          <Form.Item
+            name="reject"
+            label="驳回原因"
+            rules={[{ required: true, message: '请输入驳回原因' }]}
+          >
+            <Input.TextArea rows={3} placeholder="请输入驳回原因，用户将看到此信息" />
+          </Form.Item>
+        </Form>
+      </Modal>
     </>
   )
 }

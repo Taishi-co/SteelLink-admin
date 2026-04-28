@@ -122,6 +122,7 @@ export interface UserItem {
   realName?: string
   avatar?: string
   enterpriseId?: number
+  identityStatus?: number
   status: number
   createdAt: string
 }
@@ -130,6 +131,7 @@ export const userApi = {
   list: (params: PageParams) => get<PageResult<UserItem>>('/users', { params }),
   get: (id: number) => get<UserItem>(`/users/${id}`),
   updateStatus: (id: number, status: number) => put(`/users/${id}/status`, { status }),
+  auditIdentity: (id: number, data: { status: number; reject?: string }) => put(`/users/${id}/identity`, data),
 }
 
 // Enterprise API
