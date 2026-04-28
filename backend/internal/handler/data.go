@@ -71,19 +71,19 @@ type menuItem struct {
 }
 
 type userItem struct {
-	ID               int64     `json:"id"`
-	Username         string    `json:"username"`
-	Phone            string    `json:"phone,omitempty"`
-	Email            string    `json:"email,omitempty"`
-	RealName         string    `json:"realName,omitempty"`
-	EnterpriseID     *int64    `json:"enterpriseId,omitempty"`
-	IdentityStatus   int       `json:"identityStatus"`
-	IDCard           string    `json:"idCard,omitempty"`
-	IDCardFrontURL   string    `json:"idCardFrontUrl,omitempty"`
-	IDCardBackURL    string    `json:"idCardBackUrl,omitempty"`
-	IdentityReject   string    `json:"identityReject,omitempty"`
-	Status           int       `json:"status"`
-	CreatedAt        time.Time `json:"createdAt"`
+	ID             int64     `json:"id"`
+	Username       string    `json:"username"`
+	Phone          string    `json:"phone,omitempty"`
+	Email          string    `json:"email,omitempty"`
+	RealName       string    `json:"realName,omitempty"`
+	EnterpriseID   *int64    `json:"enterpriseId,omitempty"`
+	IdentityStatus int       `json:"identityStatus"`
+	IDCard         string    `json:"idCard,omitempty"`
+	IDCardFrontURL string    `json:"idCardFrontUrl,omitempty"`
+	IDCardBackURL  string    `json:"idCardBackUrl,omitempty"`
+	IdentityReject string    `json:"identityReject,omitempty"`
+	Status         int       `json:"status"`
+	CreatedAt      time.Time `json:"createdAt"`
 }
 
 type enterpriseItem struct {
@@ -313,6 +313,25 @@ func columnExists(ctx context.Context, db *sql.DB, table, column string) bool {
 		table, column,
 	).Scan(&exists)
 	return err == nil && exists > 0
+}
+
+func columnsExist(ctx context.Context, db *sql.DB, table string) map[string]bool {
+	m := make(map[string]bool)
+	rows, err := db.QueryContext(ctx,
+		`SELECT column_name FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ?`,
+		table,
+	)
+	if err != nil {
+		return m
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err == nil {
+			m[name] = true
+		}
+	}
+	return m
 }
 
 func mapProductIntStatus(raw int) int {

@@ -1080,12 +1080,13 @@ func ListUsers(c *gin.Context) {
 		return
 	}
 
-	hasEnterpriseID := columnExists(ctx, db, "users", "enterprise_id")
-	hasIdentityStatus := columnExists(ctx, db, "users", "identity_status")
-	hasIDCard := columnExists(ctx, db, "users", "id_card")
-	hasIDCardFrontURL := columnExists(ctx, db, "users", "id_card_front_url")
-	hasIDCardBackURL := columnExists(ctx, db, "users", "id_card_back_url")
-	hasIdentityReject := columnExists(ctx, db, "users", "identity_reject")
+	userCols := columnsExist(ctx, db, "users")
+	hasEnterpriseID := userCols["enterprise_id"]
+	hasIdentityStatus := userCols["identity_status"]
+	hasIDCard := userCols["id_card"]
+	hasIDCardFrontURL := userCols["id_card_front_url"]
+	hasIDCardBackURL := userCols["id_card_back_url"]
+	hasIdentityReject := userCols["identity_reject"]
 	query := `
 		SELECT id, username, COALESCE(phone, ''), COALESCE(email, ''), status, created_at`
 	if hasEnterpriseID {
@@ -1162,13 +1163,14 @@ func GetUser(c *gin.Context) {
 	defer cancel()
 
 	id := c.Param("id")
-	hasEnterpriseID := columnExists(ctx, db, "users", "enterprise_id")
-	hasRealName := columnExists(ctx, db, "users", "real_name")
-	hasIdentityStatus := columnExists(ctx, db, "users", "identity_status")
-	hasIDCard := columnExists(ctx, db, "users", "id_card")
-	hasIDCardFrontURL := columnExists(ctx, db, "users", "id_card_front_url")
-	hasIDCardBackURL := columnExists(ctx, db, "users", "id_card_back_url")
-	hasIdentityReject := columnExists(ctx, db, "users", "identity_reject")
+	userCols := columnsExist(ctx, db, "users")
+	hasEnterpriseID := userCols["enterprise_id"]
+	hasRealName := userCols["real_name"]
+	hasIdentityStatus := userCols["identity_status"]
+	hasIDCard := userCols["id_card"]
+	hasIDCardFrontURL := userCols["id_card_front_url"]
+	hasIDCardBackURL := userCols["id_card_back_url"]
+	hasIdentityReject := userCols["identity_reject"]
 
 	query := `SELECT id, username, COALESCE(phone, ''), COALESCE(email, ''), status, created_at`
 	if hasEnterpriseID {
