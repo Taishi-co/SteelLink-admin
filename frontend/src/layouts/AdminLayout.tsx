@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Layout, Menu, Avatar, Dropdown, Button, theme, Spin } from 'antd'
+import { Layout, Menu, Avatar, Dropdown, Button, theme, Spin, Result } from 'antd'
 import {
   DashboardOutlined,
   SettingOutlined,
@@ -132,6 +132,19 @@ function apiMenuToAntd(items: ApiMenuItem[]): MenuProps['items'] {
   })
 }
 
+function collectMenuPaths(items: ApiMenuItem[]): string[] {
+  const paths: string[] = []
+  items.forEach((item) => {
+    if (item.path && item.type === 1) {
+      paths.push(item.path)
+    }
+    if (item.children?.length) {
+      paths.push(...collectMenuPaths(item.children))
+    }
+  })
+  return paths
+}
+
 const pageMeta: Record<string, { title: string; description: string }> = {
   '/dashboard': { title: '数据概览', description: '平台数据总览与待办事项' },
   '/system/admin': { title: '管理员管理', description: '管理后台账号与权限' },
@@ -174,6 +187,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     }
     return fallbackMenuItems
   }, [apiMenus])
+  const allowedPaths = useMemo(() => collectMenuPaths(apiMenus), [apiMenus])
+  const firstAllowedPath = allowedPaths[0] || '/dashboard'
+  const routeAllowed = menuLoading || allowedPaths.length === 0 || allowedPaths.includes(location.pathname)
+
+  useEffect(() => {
+    if (!menuLoading && allowedPaths.length > 0 && !allowedPaths.includes(location.pathname)) {
+      navigate(firstAllowedPath, { replace: true })
+    }
+  }, [allowedPaths, firstAllowedPath, location.pathname, menuLoading, navigate])
 
   const currentMeta = pageMeta[location.pathname] ?? pageMeta['/dashboard']
 
@@ -266,7 +288,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             borderRadius: borderRadiusLG,
           }}
         >
-          <div className={styles.contentShell}>{children || <Outlet />}</div>
+          <div className={styles.contentShell}>
+            {routeAllowed ? (
+              children || <Outlet />
+            ) : (
+              <Result status="403" title="无权访问" subTitle="当前角色没有该页面权限。" />
+            )}
+          </div>
         </Content>
       </Layout>
     </Layout>
