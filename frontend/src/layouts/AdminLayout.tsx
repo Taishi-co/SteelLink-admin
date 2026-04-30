@@ -38,6 +38,10 @@ import { authApi } from '../services/api'
 import type { MenuItem as ApiMenuItem } from '../services/api'
 import styles from './AdminLayout.module.css'
 
+type AntdMenuItem = NonNullable<MenuProps['items']>[number] & {
+  children?: MenuProps['items']
+}
+
 const { Header, Sider, Content } = Layout
 
 const iconMap: Record<string, React.ReactNode> = {
@@ -120,7 +124,7 @@ function apiMenuToAntd(items: ApiMenuItem[]): MenuProps['items'] {
 
   return items.map((item) => {
     const icon = item.icon ? (iconMap[item.icon] || null) : null
-    const result: any = {
+    const result: AntdMenuItem = {
       key: item.path || String(item.id),
       icon,
       label: item.name,
