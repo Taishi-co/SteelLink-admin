@@ -1088,17 +1088,17 @@ func ListUsers(c *gin.Context) {
 	hasIDCardBackURL := userCols["id_card_back_url"]
 	hasIdentityReject := userCols["identity_reject"]
 	query := `
-		SELECT id, username, COALESCE(phone, ''), COALESCE(email, ''), status, created_at`
-	if hasEnterpriseID {
-		query += `, enterprise_id`
-	}
-	if hasIdentityStatus {
-		query += `, COALESCE(identity_status, 0)`
-	}
-	if hasIDCard {
-		query += `, COALESCE(id_card, '')`
-	}
-	if hasIDCardFrontURL {
+		SELECT id, COALESCE(username, ''), COALESCE(phone, ''), COALESCE(email, ''), status, created_at`
+		if hasEnterpriseID {
+			query += `, enterprise_id`
+		}
+		if hasIdentityStatus {
+			query += `, COALESCE(identity_status, 0)`
+		}
+		if hasIDCard {
+			query += `, COALESCE(id_card, '')`
+		}
+		if hasIDCardFrontURL {
 		query += `, COALESCE(id_card_front_url, '')`
 	}
 	if hasIDCardBackURL {
@@ -1172,7 +1172,7 @@ func GetUser(c *gin.Context) {
 	hasIDCardBackURL := userCols["id_card_back_url"]
 	hasIdentityReject := userCols["identity_reject"]
 
-	query := `SELECT id, username, COALESCE(phone, ''), COALESCE(email, ''), status, created_at`
+	query := `SELECT id, COALESCE(username, ''), COALESCE(phone, ''), COALESCE(email, ''), status, created_at`
 	if hasEnterpriseID {
 		query += `, enterprise_id`
 	}

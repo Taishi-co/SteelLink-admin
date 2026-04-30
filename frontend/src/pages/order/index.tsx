@@ -13,12 +13,14 @@ const orderStatusMeta: Record<number, { color: string; text: string }> = {
   1: { color: 'orange', text: '待确认' },
   2: { color: 'gold', text: '待签合同' },
   3: { color: 'blue', text: '待支付' },
-  4: { color: 'cyan', text: '待收款确认' },
+  4: { color: 'cyan', text: '已支付' },
   5: { color: 'purple', text: '待提货' },
   6: { color: 'processing', text: '配送中' },
-  7: { color: 'green', text: '已送达' },
+  7: { color: 'geekblue', text: '已送达' },
   8: { color: 'green', text: '已完成' },
   9: { color: 'red', text: '已取消' },
+  10: { color: 'volcano', text: '已冻结' },
+  11: { color: 'magenta', text: '异常' },
 }
 
 function timelineColor(status: string) {
@@ -30,11 +32,15 @@ function timelineColor(status: string) {
 
 const statusOptions = [
   { label: '全部状态', value: '' },
-  { label: '待支付', value: 'pending_payment' },
-  { label: '待收款确认', value: 'pending_payment_audit' },
-  { label: '待提货', value: 'pending_pickup' },
-  { label: '已完成', value: 'completed' },
-  { label: '已取消', value: 'cancelled' },
+  { label: '待确认', value: '1' },
+  { label: '待签合同', value: '2' },
+  { label: '待支付', value: '3' },
+  { label: '已支付', value: '4' },
+  { label: '待提货', value: '5' },
+  { label: '配送中', value: '6' },
+  { label: '已送达', value: '7' },
+  { label: '已完成', value: '8' },
+  { label: '已取消', value: '9' },
 ]
 
 export default function OrderList() {
