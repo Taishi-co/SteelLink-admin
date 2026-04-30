@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"net/http"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/Taishi-co/SteelLink-admin/backend/internal/database"
@@ -23,18 +25,38 @@ type aiProcurementStageConfig struct {
 }
 
 type aiProcurementModelConfig struct {
+	ParsingEnabled      bool    `json:"parsingEnabled"`
 	Provider            string  `json:"provider"`
+	BaseURL             string  `json:"baseUrl"`
+	APIKeyEnv           string  `json:"apiKeyEnv"`
+	APIKeyConfigured    bool    `json:"apiKeyConfigured"`
 	Model               string  `json:"model"`
 	Temperature         float64 `json:"temperature"`
+	TopP                float64 `json:"topP"`
 	MaxTokens           int     `json:"maxTokens"`
+	TimeoutSec          int     `json:"timeoutSec"`
+	RetryCount          int     `json:"retryCount"`
 	ConfidenceThreshold float64 `json:"confidenceThreshold"`
 }
 
 type aiProcurementMatchingConfig struct {
-	CategoryBoost      int     `json:"categoryBoost"`
-	SupplierPriority   string  `json:"supplierPriority"`
-	PriceTolerancePct  float64 `json:"priceTolerancePct"`
-	MaxRecommendations int     `json:"maxRecommendations"`
+	Mode                     string  `json:"mode"`
+	VectorEnabled            bool    `json:"vectorEnabled"`
+	VectorProvider           string  `json:"vectorProvider"`
+	VectorEndpoint           string  `json:"vectorEndpoint"`
+	ProductCollection        string  `json:"productCollection"`
+	SupplierCollection       string  `json:"supplierCollection"`
+	FinanceProductCollection string  `json:"financeProductCollection"`
+	EmbeddingModel           string  `json:"embeddingModel"`
+	EmbeddingDimension       int     `json:"embeddingDimension"`
+	VectorTopK               int     `json:"vectorTopK"`
+	VectorMinScore           float64 `json:"vectorMinScore"`
+	HybridKeywordWeight      float64 `json:"hybridKeywordWeight"`
+	HybridVectorWeight       float64 `json:"hybridVectorWeight"`
+	CategoryBoost            int     `json:"categoryBoost"`
+	SupplierPriority         string  `json:"supplierPriority"`
+	PriceTolerancePct        float64 `json:"priceTolerancePct"`
+	MaxRecommendations       int     `json:"maxRecommendations"`
 }
 
 type aiProcurementFinanceConfig struct {
@@ -85,6 +107,7 @@ func GetAIProcurementConfig(c *gin.Context) {
 			config.UpdatedAt = &updatedAt.Time
 		}
 	}
+	normalizeAIProcurementConfig(&config)
 	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": config})
 }
 
@@ -151,17 +174,36 @@ func defaultAIProcurementConfig() aiProcurementConfig {
 			{Code: "review_submission", Name: "审核提交", Enabled: true, Required: true, Sort: 50, TimeoutSec: 15},
 		},
 		Model: aiProcurementModelConfig{
-			Provider:            "platform",
-			Model:               "steel-procurement-router",
+			ParsingEnabled:      false,
+			Provider:            "minimax",
+			BaseURL:             "https://api.minimax.io/v1/chat/completions",
+			APIKeyEnv:           "MINIMAX_API_KEY",
+			Model:               "MiniMax-M2.7",
 			Temperature:         0.2,
 			MaxTokens:           1200,
+			TopP:                0.9,
+			TimeoutSec:          20,
+			RetryCount:          1,
 			ConfidenceThreshold: 0.78,
 		},
 		Matching: aiProcurementMatchingConfig{
-			CategoryBoost:      30,
-			SupplierPriority:   "approved_first",
-			PriceTolerancePct:  8,
-			MaxRecommendations: 5,
+			Mode:                     "hybrid",
+			VectorEnabled:            false,
+			VectorProvider:           "milvus",
+			VectorEndpoint:           "localhost:19530",
+			ProductCollection:        "ai_product_embeddings",
+			SupplierCollection:       "ai_supplier_embeddings",
+			FinanceProductCollection: "ai_finance_product_embeddings",
+			EmbeddingModel:           "embo-01",
+			EmbeddingDimension:       1536,
+			VectorTopK:               10,
+			VectorMinScore:           0.65,
+			HybridKeywordWeight:      0.35,
+			HybridVectorWeight:       0.65,
+			CategoryBoost:            30,
+			SupplierPriority:         "approved_first",
+			PriceTolerancePct:        8,
+			MaxRecommendations:       5,
 		},
 		Finance: aiProcurementFinanceConfig{
 			Enabled:          true,
@@ -179,17 +221,83 @@ func defaultAIProcurementConfig() aiProcurementConfig {
 }
 
 func normalizeAIProcurementConfig(config *aiProcurementConfig) {
+	defaults := defaultAIProcurementConfig()
 	if len(config.Stages) == 0 {
-		config.Stages = defaultAIProcurementConfig().Stages
+		config.Stages = defaults.Stages
+	}
+	config.Model.Provider = strings.TrimSpace(config.Model.Provider)
+	if config.Model.Provider == "" {
+		config.Model.Provider = defaults.Model.Provider
+	}
+	config.Model.BaseURL = strings.TrimSpace(config.Model.BaseURL)
+	if config.Model.BaseURL == "" {
+		config.Model.BaseURL = defaults.Model.BaseURL
+	}
+	config.Model.APIKeyEnv = strings.TrimSpace(config.Model.APIKeyEnv)
+	if config.Model.APIKeyEnv == "" {
+		config.Model.APIKeyEnv = defaults.Model.APIKeyEnv
+	}
+	config.Model.Model = strings.TrimSpace(config.Model.Model)
+	if config.Model.Model == "" {
+		config.Model.Model = defaults.Model.Model
 	}
 	if config.Model.MaxTokens <= 0 {
-		config.Model.MaxTokens = 1200
+		config.Model.MaxTokens = defaults.Model.MaxTokens
+	}
+	if config.Model.Temperature <= 0 || config.Model.Temperature > 1 {
+		config.Model.Temperature = defaults.Model.Temperature
+	}
+	if config.Model.TopP <= 0 || config.Model.TopP > 1 {
+		config.Model.TopP = defaults.Model.TopP
+	}
+	if config.Model.TimeoutSec <= 0 {
+		config.Model.TimeoutSec = defaults.Model.TimeoutSec
+	}
+	if config.Model.RetryCount < 0 {
+		config.Model.RetryCount = 0
 	}
 	if config.Model.ConfidenceThreshold <= 0 {
-		config.Model.ConfidenceThreshold = 0.78
+		config.Model.ConfidenceThreshold = defaults.Model.ConfidenceThreshold
 	}
+	config.Model.APIKeyConfigured = os.Getenv(config.Model.APIKeyEnv) != ""
 	if config.Matching.MaxRecommendations <= 0 {
 		config.Matching.MaxRecommendations = 5
+	}
+	if config.Matching.Mode == "" {
+		config.Matching.Mode = defaults.Matching.Mode
+	}
+	if config.Matching.VectorProvider == "" {
+		config.Matching.VectorProvider = defaults.Matching.VectorProvider
+	}
+	if config.Matching.VectorEndpoint == "" {
+		config.Matching.VectorEndpoint = defaults.Matching.VectorEndpoint
+	}
+	if config.Matching.ProductCollection == "" {
+		config.Matching.ProductCollection = defaults.Matching.ProductCollection
+	}
+	if config.Matching.SupplierCollection == "" {
+		config.Matching.SupplierCollection = defaults.Matching.SupplierCollection
+	}
+	if config.Matching.FinanceProductCollection == "" {
+		config.Matching.FinanceProductCollection = defaults.Matching.FinanceProductCollection
+	}
+	if config.Matching.EmbeddingModel == "" {
+		config.Matching.EmbeddingModel = defaults.Matching.EmbeddingModel
+	}
+	if config.Matching.EmbeddingDimension <= 0 {
+		config.Matching.EmbeddingDimension = defaults.Matching.EmbeddingDimension
+	}
+	if config.Matching.VectorTopK <= 0 {
+		config.Matching.VectorTopK = defaults.Matching.VectorTopK
+	}
+	if config.Matching.VectorMinScore <= 0 || config.Matching.VectorMinScore > 1 {
+		config.Matching.VectorMinScore = defaults.Matching.VectorMinScore
+	}
+	if config.Matching.HybridKeywordWeight <= 0 {
+		config.Matching.HybridKeywordWeight = defaults.Matching.HybridKeywordWeight
+	}
+	if config.Matching.HybridVectorWeight <= 0 {
+		config.Matching.HybridVectorWeight = defaults.Matching.HybridVectorWeight
 	}
 	if config.Finance.RequiredDocs == nil {
 		config.Finance.RequiredDocs = []string{}

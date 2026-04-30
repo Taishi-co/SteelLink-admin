@@ -298,13 +298,33 @@ export interface AIProcurementConfig {
   enabled: boolean
   stages: AIProcurementStageConfig[]
   model: {
+    parsingEnabled: boolean
     provider: string
+    baseUrl: string
+    apiKeyEnv: string
+    apiKeyConfigured: boolean
     model: string
     temperature: number
+    topP: number
     maxTokens: number
+    timeoutSec: number
+    retryCount: number
     confidenceThreshold: number
   }
   matching: {
+    mode: string
+    vectorEnabled: boolean
+    vectorProvider: string
+    vectorEndpoint: string
+    productCollection: string
+    supplierCollection: string
+    financeProductCollection: string
+    embeddingModel: string
+    embeddingDimension: number
+    vectorTopK: number
+    vectorMinScore: number
+    hybridKeywordWeight: number
+    hybridVectorWeight: number
     categoryBoost: number
     supplierPriority: string
     priceTolerancePct: number

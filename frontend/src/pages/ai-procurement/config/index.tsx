@@ -26,10 +26,25 @@ const supplierPriorityOptions = [
   { label: '库存优先', value: 'stock_first' },
 ]
 
+const matchingModeOptions = [
+  { label: '混合召回', value: 'hybrid' },
+  { label: '向量优先', value: 'vector_first' },
+  { label: '关键词优先', value: 'keyword_first' },
+  { label: '规则兜底', value: 'rule_based' },
+]
+
 const modelProviderOptions = [
-  { label: '平台内置', value: 'platform' },
+  { label: 'MiniMax', value: 'minimax' },
   { label: 'OpenAI兼容', value: 'openai_compatible' },
+  { label: '平台内置规则', value: 'rule_based' },
   { label: '私有模型服务', value: 'private_endpoint' },
+]
+
+const modelNameOptions = [
+  { label: 'MiniMax-M2.7', value: 'MiniMax-M2.7' },
+  { label: 'MiniMax-M2.7-highspeed', value: 'MiniMax-M2.7-highspeed' },
+  { label: 'MiniMax-M2.5', value: 'MiniMax-M2.5' },
+  { label: 'MiniMax-M2.1', value: 'MiniMax-M2.1' },
 ]
 
 export default function AIProcurementConfigPage() {
@@ -135,6 +150,7 @@ export default function AIProcurementConfigPage() {
   ]
 
   const stages = Form.useWatch('stages', form) ?? config?.stages ?? []
+  const modelConfig = Form.useWatch('model', form) ?? config?.model
 
   return (
     <Form form={form} layout="vertical">
@@ -182,12 +198,44 @@ export default function AIProcurementConfigPage() {
         <Row gutter={16}>
           <Col span={12}>
             <Card title="模型与解析策略">
-              <Form.Item name={['model', 'provider']} label="模型供应方" rules={[{ required: true }]}>
-                <Select options={modelProviderOptions} />
+              <Form.Item name={['model', 'parsingEnabled']} label="启用模型解析" valuePropName="checked">
+                <Switch checkedChildren="启用" unCheckedChildren="规则兜底" />
               </Form.Item>
-              <Form.Item name={['model', 'model']} label="模型名称" rules={[{ required: true }]}>
-                <Input placeholder="steel-procurement-router" />
+              <Row gutter={12}>
+                <Col span={12}>
+                  <Form.Item name={['model', 'provider']} label="模型供应方" rules={[{ required: true }]}>
+                    <Select options={modelProviderOptions} />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item name={['model', 'model']} label="模型名称" rules={[{ required: true }]}>
+                    <Select options={modelNameOptions} showSearch />
+                  </Form.Item>
+                </Col>
+              </Row>
+              <Form.Item name={['model', 'baseUrl']} label="Chat Completions Endpoint" rules={[{ required: true }]}>
+                <Input placeholder="https://api.minimax.io/v1/chat/completions" />
               </Form.Item>
+              <Row gutter={12}>
+                <Col span={16}>
+                  <Form.Item name={['model', 'apiKeyEnv']} label="API Key 环境变量" rules={[{ required: true }]}>
+                    <Input placeholder="MINIMAX_API_KEY" />
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item label="密钥状态">
+                    <Tag color={modelConfig?.apiKeyConfigured ? 'green' : 'orange'}>
+                      {modelConfig?.apiKeyConfigured ? '已配置' : '未检测到'}
+                    </Tag>
+                  </Form.Item>
+                </Col>
+              </Row>
+              <Alert
+                type="warning"
+                showIcon
+                style={{ marginBottom: 16 }}
+                message="API Key 不在管理端落库。请在后端运行环境配置 MINIMAX_API_KEY，页面只保存环境变量名。"
+              />
               <Row gutter={12}>
                 <Col span={8}>
                   <Form.Item name={['model', 'temperature']} label="温度">
@@ -195,8 +243,8 @@ export default function AIProcurementConfigPage() {
                   </Form.Item>
                 </Col>
                 <Col span={8}>
-                  <Form.Item name={['model', 'maxTokens']} label="最大Token">
-                    <InputNumber min={256} max={8000} style={{ width: '100%' }} />
+                  <Form.Item name={['model', 'topP']} label="Top P">
+                    <InputNumber min={0} max={1} step={0.05} style={{ width: '100%' }} />
                   </Form.Item>
                 </Col>
                 <Col span={8}>
@@ -205,10 +253,102 @@ export default function AIProcurementConfigPage() {
                   </Form.Item>
                 </Col>
               </Row>
+              <Row gutter={12}>
+                <Col span={8}>
+                  <Form.Item name={['model', 'maxTokens']} label="最大Token">
+                    <InputNumber min={256} max={2048} style={{ width: '100%' }} />
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item name={['model', 'timeoutSec']} label="超时秒数">
+                    <InputNumber min={3} max={120} style={{ width: '100%' }} />
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item name={['model', 'retryCount']} label="失败重试">
+                    <InputNumber min={0} max={3} style={{ width: '100%' }} />
+                  </Form.Item>
+                </Col>
+              </Row>
             </Card>
           </Col>
           <Col span={12}>
             <Card title="商品匹配策略">
+              <Row gutter={12}>
+                <Col span={12}>
+                  <Form.Item name={['matching', 'mode']} label="匹配模式">
+                    <Select options={matchingModeOptions} />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item name={['matching', 'vectorEnabled']} label="启用向量检索" valuePropName="checked">
+                    <Switch checkedChildren="启用" unCheckedChildren="关闭" />
+                  </Form.Item>
+                </Col>
+              </Row>
+              <Row gutter={12}>
+                <Col span={12}>
+                  <Form.Item name={['matching', 'vectorProvider']} label="向量数据库">
+                    <Input placeholder="milvus" />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item name={['matching', 'vectorEndpoint']} label="向量库地址">
+                    <Input placeholder="localhost:19530" />
+                  </Form.Item>
+                </Col>
+              </Row>
+              <Row gutter={12}>
+                <Col span={8}>
+                  <Form.Item name={['matching', 'productCollection']} label="商品集合">
+                    <Input placeholder="ai_product_embeddings" />
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item name={['matching', 'supplierCollection']} label="供应商集合">
+                    <Input placeholder="ai_supplier_embeddings" />
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item name={['matching', 'financeProductCollection']} label="融资产品集合">
+                    <Input placeholder="ai_finance_product_embeddings" />
+                  </Form.Item>
+                </Col>
+              </Row>
+              <Row gutter={12}>
+                <Col span={8}>
+                  <Form.Item name={['matching', 'embeddingModel']} label="Embedding模型">
+                    <Input placeholder="embo-01" />
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item name={['matching', 'embeddingDimension']} label="向量维度">
+                    <InputNumber min={128} max={8192} style={{ width: '100%' }} />
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item name={['matching', 'vectorTopK']} label="向量TopK">
+                    <InputNumber min={1} max={100} style={{ width: '100%' }} />
+                  </Form.Item>
+                </Col>
+              </Row>
+              <Row gutter={12}>
+                <Col span={8}>
+                  <Form.Item name={['matching', 'vectorMinScore']} label="最低相似度">
+                    <InputNumber min={0} max={1} step={0.01} style={{ width: '100%' }} />
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item name={['matching', 'hybridKeywordWeight']} label="关键词权重">
+                    <InputNumber min={0} max={1} step={0.05} style={{ width: '100%' }} />
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item name={['matching', 'hybridVectorWeight']} label="向量权重">
+                    <InputNumber min={0} max={1} step={0.05} style={{ width: '100%' }} />
+                  </Form.Item>
+                </Col>
+              </Row>
               <Form.Item name={['matching', 'supplierPriority']} label="供应商优先级">
                 <Select options={supplierPriorityOptions} />
               </Form.Item>
