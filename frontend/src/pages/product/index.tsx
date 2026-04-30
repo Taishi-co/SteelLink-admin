@@ -84,7 +84,9 @@ export default function ProductList() {
       width: 120,
       render: (price: number) => `¥${price.toFixed(2)}`,
     },
-    { title: '库存', dataIndex: 'stock', key: 'stock', width: 100 },
+    { title: '总库存', dataIndex: 'stock', key: 'stock', width: 90, render: (v: number) => `${v}吨` },
+    { title: '可售', dataIndex: 'availableQty', key: 'availableQty', width: 90, render: (v: number) => `${v}吨` },
+    { title: '锁定', dataIndex: 'lockedQty', key: 'lockedQty', width: 90, render: (v: number) => `${v}吨` },
     {
       title: '审核状态',
       dataIndex: 'status',

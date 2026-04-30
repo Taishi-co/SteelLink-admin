@@ -123,6 +123,8 @@ type productItem struct {
 	Unit          string     `json:"unit,omitempty"`
 	Price         float64    `json:"price"`
 	Stock         float64    `json:"stock"`
+	AvailableQty  float64    `json:"availableQty"`
+	LockedQty     float64    `json:"lockedQty"`
 	MinOrderQty   float64    `json:"minOrderQty"`
 	DeliveryDays  int        `json:"deliveryDays"`
 	QuoteValidity int        `json:"quoteValidity"`

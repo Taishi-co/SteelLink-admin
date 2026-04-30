@@ -1581,7 +1581,7 @@ func ListProducts(c *gin.Context) {
 	rows, err := db.QueryContext(ctx, fmt.Sprintf(`
 		SELECT id, name, enterprise_id, COALESCE(category, ''), COALESCE(sub_category, ''), COALESCE(steel_mill, ''),
 		       spec, warehouse_info, COALESCE(bundle_no, ''), COALESCE(product_no, ''),
-		       COALESCE(unit_price, 0), COALESCE(quantity, 0), COALESCE(min_order_qty, 0),
+		       COALESCE(unit_price, 0), COALESCE(quantity, 0), COALESCE(available_qty, 0), COALESCE(locked_qty, 0), COALESCE(min_order_qty, 0),
 		       COALESCE(delivery_days, 0), COALESCE(quote_validity, 0),
 		       COALESCE(description, ''), images, status, created_at, COALESCE(audit_remark, ''), approved_at, updated_at
 		FROM products
@@ -1607,7 +1607,7 @@ func ListProducts(c *gin.Context) {
 		var productNo string
 		if err := rows.Scan(&item.ID, &item.Name, &item.EnterpriseID, &item.Category, &item.SubCategory, &item.SteelMill,
 			&rawSpec, &rawWarehouse, &item.BundleNo, &productNo,
-			&item.Price, &item.Stock, &item.MinOrderQty,
+			&item.Price, &item.Stock, &item.AvailableQty, &item.LockedQty, &item.MinOrderQty,
 			&item.DeliveryDays, &item.QuoteValidity,
 			&item.Description, &imageJSON, &rawStatus, &item.CreatedAt, &auditRemark, &auditedAt, &updatedAt); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
@@ -1846,7 +1846,7 @@ func GetProduct(c *gin.Context) {
 	row := db.QueryRowContext(ctx, `
 		SELECT id, name, enterprise_id, COALESCE(category, ''), COALESCE(sub_category, ''), COALESCE(steel_mill, ''),
 		       spec, warehouse_info, COALESCE(bundle_no, ''), COALESCE(product_no, ''),
-		       COALESCE(unit_price, 0), COALESCE(quantity, 0), COALESCE(min_order_qty, 0),
+		       COALESCE(unit_price, 0), COALESCE(quantity, 0), COALESCE(available_qty, 0), COALESCE(locked_qty, 0), COALESCE(min_order_qty, 0),
 		       COALESCE(delivery_days, 0), COALESCE(quote_validity, 0),
 		       COALESCE(description, ''), images, status, COALESCE(audit_remark, ''), approved_at, created_at, updated_at
 		FROM products
@@ -1869,6 +1869,8 @@ func GetProduct(c *gin.Context) {
 		&productNo,
 		&item.Price,
 		&item.Stock,
+		&item.AvailableQty,
+		&item.LockedQty,
 		&item.MinOrderQty,
 		&item.DeliveryDays,
 		&item.QuoteValidity,
