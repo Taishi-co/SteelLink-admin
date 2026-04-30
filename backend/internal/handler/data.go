@@ -148,7 +148,6 @@ type orderItem struct {
 	TaxTotalAmount     float64             `json:"taxTotalAmount"`
 	Currency           string              `json:"currency"`
 	Status             int                 `json:"status"`
-	PaymentInfoJSON    sql.NullString      `json:"-"`
 	DeliveryVoucher    string              `json:"deliveryVoucher,omitempty"`
 	ReceiptVoucher     string              `json:"receiptVoucher,omitempty"`
 	ReceiptAt          *time.Time          `json:"receiptAt,omitempty"`
