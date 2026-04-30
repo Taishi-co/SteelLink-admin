@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -1088,17 +1089,17 @@ func ListUsers(c *gin.Context) {
 	hasIDCardBackURL := userCols["id_card_back_url"]
 	hasIdentityReject := userCols["identity_reject"]
 	query := `
-		SELECT id, username, COALESCE(phone, ''), COALESCE(email, ''), status, created_at`
-	if hasEnterpriseID {
-		query += `, enterprise_id`
-	}
-	if hasIdentityStatus {
-		query += `, COALESCE(identity_status, 0)`
-	}
-	if hasIDCard {
-		query += `, COALESCE(id_card, '')`
-	}
-	if hasIDCardFrontURL {
+		SELECT id, COALESCE(username, ''), COALESCE(phone, ''), COALESCE(email, ''), status, created_at`
+		if hasEnterpriseID {
+			query += `, enterprise_id`
+		}
+		if hasIdentityStatus {
+			query += `, COALESCE(identity_status, 0)`
+		}
+		if hasIDCard {
+			query += `, COALESCE(id_card, '')`
+		}
+		if hasIDCardFrontURL {
 		query += `, COALESCE(id_card_front_url, '')`
 	}
 	if hasIDCardBackURL {
@@ -1172,7 +1173,7 @@ func GetUser(c *gin.Context) {
 	hasIDCardBackURL := userCols["id_card_back_url"]
 	hasIdentityReject := userCols["identity_reject"]
 
-	query := `SELECT id, username, COALESCE(phone, ''), COALESCE(email, ''), status, created_at`
+	query := `SELECT id, COALESCE(username, ''), COALESCE(phone, ''), COALESCE(email, ''), status, created_at`
 	if hasEnterpriseID {
 		query += `, enterprise_id`
 	}
@@ -1690,6 +1691,7 @@ func ListOrders(c *gin.Context) {
 		SELECT id, order_no, buyer_id, COALESCE(buyer_name, ''), seller_id, COALESCE(seller_enterprise_id, 0),
 		       COALESCE(seller_name, ''), COALESCE(total_quantity, 0), COALESCE(total_amount, 0),
 		       COALESCE(tax_total_amount, 0), COALESCE(currency, 'CNY'), status,
+		       COALESCE(payment_info, ''),
 		       COALESCE(delivery_voucher, ''), COALESCE(receipt_voucher, ''), receipt_at, expires_at, created_at
 		FROM orders
 		WHERE %s
@@ -1717,6 +1719,7 @@ func ListOrders(c *gin.Context) {
 			&item.TaxTotalAmount,
 			&item.Currency,
 			&item.Status,
+			&item.PaymentInfoJSON,
 			&item.DeliveryVoucher,
 			&item.ReceiptVoucher,
 			&item.ReceiptAt,
@@ -1735,6 +1738,22 @@ func ListOrders(c *gin.Context) {
 		"message": "success",
 		"data":    pageResult[orderItem]{List: items, Total: total},
 	})
+}
+
+func effectiveOrderStatus(dbStatus int, paymentInfoJSON sql.NullString) int {
+	if dbStatus != 3 {
+		return dbStatus
+	}
+	if !paymentInfoJSON.Valid || paymentInfoJSON.String == "" {
+		return dbStatus
+	}
+	var pi struct {
+		VoucherURL string `json:"voucher_url"`
+	}
+	if json.Unmarshal([]byte(paymentInfoJSON.String), &pi) == nil && pi.VoucherURL != "" {
+		return 4
+	}
+	return dbStatus
 }
 
 func buildOrderTimeline(order orderItem) []orderTimelineItem {
