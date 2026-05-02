@@ -300,6 +300,23 @@ export default function AIProcurementConfigPage() {
               </Row>
               <Row gutter={12}>
                 <Col span={8}>
+                  <Form.Item name={['matching', 'vectorDatabase']} label="Milvus Database">
+                    <Input placeholder="steellink_ai" />
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item name={['matching', 'vectorUsername']} label="Milvus 用户名">
+                    <Input placeholder="可选" />
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item name={['matching', 'vectorPasswordEnv']} label="Milvus密码环境变量">
+                    <Input placeholder="MILVUS_PASSWORD" />
+                  </Form.Item>
+                </Col>
+              </Row>
+              <Row gutter={12}>
+                <Col span={8}>
                   <Form.Item name={['matching', 'productCollection']} label="商品集合">
                     <Input placeholder="ai_product_embeddings" />
                   </Form.Item>
@@ -317,6 +334,23 @@ export default function AIProcurementConfigPage() {
               </Row>
               <Row gutter={12}>
                 <Col span={8}>
+                  <Form.Item name={['matching', 'embeddingProvider']} label="Embedding供应方">
+                    <Input placeholder="minimax" />
+                  </Form.Item>
+                </Col>
+                <Col span={16}>
+                  <Form.Item name={['matching', 'embeddingBaseUrl']} label="Embedding Endpoint">
+                    <Input placeholder="https://api.minimax.io/v1/embeddings" />
+                  </Form.Item>
+                </Col>
+              </Row>
+              <Row gutter={12}>
+                <Col span={8}>
+                  <Form.Item name={['matching', 'embeddingApiKeyEnv']} label="Embedding Key环境变量">
+                    <Input placeholder="MINIMAX_API_KEY" />
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
                   <Form.Item name={['matching', 'embeddingModel']} label="Embedding模型">
                     <Input placeholder="embo-01" />
                   </Form.Item>
@@ -326,13 +360,13 @@ export default function AIProcurementConfigPage() {
                     <InputNumber min={128} max={8192} style={{ width: '100%' }} />
                   </Form.Item>
                 </Col>
+              </Row>
+              <Row gutter={12}>
                 <Col span={8}>
                   <Form.Item name={['matching', 'vectorTopK']} label="向量TopK">
                     <InputNumber min={1} max={100} style={{ width: '100%' }} />
                   </Form.Item>
                 </Col>
-              </Row>
-              <Row gutter={12}>
                 <Col span={8}>
                   <Form.Item name={['matching', 'vectorMinScore']} label="最低相似度">
                     <InputNumber min={0} max={1} step={0.01} style={{ width: '100%' }} />

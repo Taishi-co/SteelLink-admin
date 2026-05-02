@@ -23,6 +23,7 @@ func RegisterRoutes(r *gin.Engine) {
 	v1 := r.Group("/api/v1")
 	{
 		v1.POST("/login", handler.Login)
+		v1.GET("/internal/ai-procurement/runtime-config", handler.GetAIProcurementRuntimeConfig)
 
 		protected := v1.Group("")
 		protected.Use(middleware.Auth())
