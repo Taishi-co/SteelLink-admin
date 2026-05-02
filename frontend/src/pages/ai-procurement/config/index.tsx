@@ -289,33 +289,74 @@ export default function AIProcurementConfigPage() {
               <Row gutter={12}>
                 <Col span={12}>
                   <Form.Item name={['matching', 'vectorProvider']} label="向量数据库">
-                    <Input placeholder="milvus" />
+                    <Input placeholder="pgvector" />
                   </Form.Item>
                 </Col>
                 <Col span={12}>
-                  <Form.Item name={['matching', 'vectorEndpoint']} label="向量库地址">
-                    <Input placeholder="localhost:19530" />
+                  <Form.Item name={['matching', 'vectorConnectionEnv']} label="pgvector DSN环境变量">
+                    <Input placeholder="PGVECTOR_DSN" />
                   </Form.Item>
                 </Col>
               </Row>
               <Row gutter={12}>
                 <Col span={8}>
-                  <Form.Item name={['matching', 'productCollection']} label="商品集合">
+                  <Form.Item name={['matching', 'vectorEndpoint']} label="向量库连接串">
+                    <Input placeholder="可选，推荐使用 PGVECTOR_DSN 环境变量" />
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item name={['matching', 'vectorDatabase']} label="Postgres Database">
+                    <Input placeholder="steellink_vectors" />
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item name={['matching', 'vectorUsername']} label="Postgres 用户名">
+                    <Input placeholder="可选" />
+                  </Form.Item>
+                </Col>
+              </Row>
+              <Row gutter={12}>
+                <Col span={8}>
+                  <Form.Item name={['matching', 'vectorPasswordEnv']} label="Postgres密码环境变量">
+                    <Input placeholder="PGVECTOR_PASSWORD" />
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item name={['matching', 'productCollection']} label="商品向量表">
                     <Input placeholder="ai_product_embeddings" />
                   </Form.Item>
                 </Col>
                 <Col span={8}>
-                  <Form.Item name={['matching', 'supplierCollection']} label="供应商集合">
+                  <Form.Item name={['matching', 'supplierCollection']} label="供应商向量表">
                     <Input placeholder="ai_supplier_embeddings" />
                   </Form.Item>
                 </Col>
+              </Row>
+              <Row gutter={12}>
                 <Col span={8}>
-                  <Form.Item name={['matching', 'financeProductCollection']} label="融资产品集合">
+                  <Form.Item name={['matching', 'financeProductCollection']} label="融资产品向量表">
                     <Input placeholder="ai_finance_product_embeddings" />
                   </Form.Item>
                 </Col>
               </Row>
               <Row gutter={12}>
+                <Col span={8}>
+                  <Form.Item name={['matching', 'embeddingProvider']} label="Embedding供应方">
+                    <Input placeholder="minimax" />
+                  </Form.Item>
+                </Col>
+                <Col span={16}>
+                  <Form.Item name={['matching', 'embeddingBaseUrl']} label="Embedding Endpoint">
+                    <Input placeholder="https://api.minimax.io/v1/embeddings" />
+                  </Form.Item>
+                </Col>
+              </Row>
+              <Row gutter={12}>
+                <Col span={8}>
+                  <Form.Item name={['matching', 'embeddingApiKeyEnv']} label="Embedding Key环境变量">
+                    <Input placeholder="MINIMAX_API_KEY" />
+                  </Form.Item>
+                </Col>
                 <Col span={8}>
                   <Form.Item name={['matching', 'embeddingModel']} label="Embedding模型">
                     <Input placeholder="embo-01" />
@@ -326,13 +367,13 @@ export default function AIProcurementConfigPage() {
                     <InputNumber min={128} max={8192} style={{ width: '100%' }} />
                   </Form.Item>
                 </Col>
+              </Row>
+              <Row gutter={12}>
                 <Col span={8}>
                   <Form.Item name={['matching', 'vectorTopK']} label="向量TopK">
                     <InputNumber min={1} max={100} style={{ width: '100%' }} />
                   </Form.Item>
                 </Col>
-              </Row>
-              <Row gutter={12}>
                 <Col span={8}>
                   <Form.Item name={['matching', 'vectorMinScore']} label="最低相似度">
                     <InputNumber min={0} max={1} step={0.01} style={{ width: '100%' }} />

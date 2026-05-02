@@ -44,9 +44,16 @@ type aiProcurementMatchingConfig struct {
 	VectorEnabled            bool    `json:"vectorEnabled"`
 	VectorProvider           string  `json:"vectorProvider"`
 	VectorEndpoint           string  `json:"vectorEndpoint"`
+	VectorDatabase           string  `json:"vectorDatabase"`
+	VectorUsername           string  `json:"vectorUsername"`
+	VectorPasswordEnv        string  `json:"vectorPasswordEnv"`
+	VectorConnectionEnv      string  `json:"vectorConnectionEnv"`
 	ProductCollection        string  `json:"productCollection"`
 	SupplierCollection       string  `json:"supplierCollection"`
 	FinanceProductCollection string  `json:"financeProductCollection"`
+	EmbeddingProvider        string  `json:"embeddingProvider"`
+	EmbeddingBaseURL         string  `json:"embeddingBaseUrl"`
+	EmbeddingAPIKeyEnv       string  `json:"embeddingApiKeyEnv"`
 	EmbeddingModel           string  `json:"embeddingModel"`
 	EmbeddingDimension       int     `json:"embeddingDimension"`
 	VectorTopK               int     `json:"vectorTopK"`
@@ -85,30 +92,50 @@ type aiProcurementConfig struct {
 
 func GetAIProcurementConfig(c *gin.Context) {
 	config := defaultAIProcurementConfig()
-	db := database.GetDB()
-	if db == nil {
+	if !loadAIProcurementConfig(c.Request.Context(), &config) {
 		c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": config})
 		return
 	}
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": config})
+}
 
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+func GetAIProcurementRuntimeConfig(c *gin.Context) {
+	expectedToken := strings.TrimSpace(os.Getenv("AI_PROCUREMENT_CONFIG_SYNC_TOKEN"))
+	if expectedToken != "" && c.GetHeader("X-Internal-Token") != expectedToken {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "invalid internal token"})
+		return
+	}
+
+	config := defaultAIProcurementConfig()
+	_ = loadAIProcurementConfig(c.Request.Context(), &config)
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": config})
+}
+
+func loadAIProcurementConfig(parent context.Context, config *aiProcurementConfig) bool {
+	db := database.GetDB()
+	if db == nil {
+		normalizeAIProcurementConfig(config)
+		return false
+	}
+
+	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
 	defer cancel()
 	if err := ensureAdminConfigTable(ctx, db); err != nil {
-		c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": config})
-		return
+		normalizeAIProcurementConfig(config)
+		return false
 	}
 
 	var raw string
 	var updatedAt sql.NullTime
 	err := db.QueryRowContext(ctx, `SELECT config_value, updated_at FROM admin_system_configs WHERE config_key = ?`, aiProcurementConfigKey).Scan(&raw, &updatedAt)
 	if err == nil && raw != "" {
-		_ = json.Unmarshal([]byte(raw), &config)
+		_ = json.Unmarshal([]byte(raw), config)
 		if updatedAt.Valid {
 			config.UpdatedAt = &updatedAt.Time
 		}
 	}
-	normalizeAIProcurementConfig(&config)
-	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": config})
+	normalizeAIProcurementConfig(config)
+	return true
 }
 
 func UpdateAIProcurementConfig(c *gin.Context) {
@@ -189,11 +216,17 @@ func defaultAIProcurementConfig() aiProcurementConfig {
 		Matching: aiProcurementMatchingConfig{
 			Mode:                     "hybrid",
 			VectorEnabled:            false,
-			VectorProvider:           "milvus",
-			VectorEndpoint:           "localhost:19530",
+			VectorProvider:           "pgvector",
+			VectorEndpoint:           "",
+			VectorDatabase:           "steellink_vectors",
+			VectorPasswordEnv:        "PGVECTOR_PASSWORD",
+			VectorConnectionEnv:      "PGVECTOR_DSN",
 			ProductCollection:        "ai_product_embeddings",
 			SupplierCollection:       "ai_supplier_embeddings",
 			FinanceProductCollection: "ai_finance_product_embeddings",
+			EmbeddingProvider:        "minimax",
+			EmbeddingBaseURL:         "https://api.minimax.io/v1/embeddings",
+			EmbeddingAPIKeyEnv:       "MINIMAX_API_KEY",
 			EmbeddingModel:           "embo-01",
 			EmbeddingDimension:       1536,
 			VectorTopK:               10,
@@ -272,6 +305,15 @@ func normalizeAIProcurementConfig(config *aiProcurementConfig) {
 	if config.Matching.VectorEndpoint == "" {
 		config.Matching.VectorEndpoint = defaults.Matching.VectorEndpoint
 	}
+	if config.Matching.VectorDatabase == "" {
+		config.Matching.VectorDatabase = defaults.Matching.VectorDatabase
+	}
+	if config.Matching.VectorPasswordEnv == "" {
+		config.Matching.VectorPasswordEnv = defaults.Matching.VectorPasswordEnv
+	}
+	if config.Matching.VectorConnectionEnv == "" {
+		config.Matching.VectorConnectionEnv = defaults.Matching.VectorConnectionEnv
+	}
 	if config.Matching.ProductCollection == "" {
 		config.Matching.ProductCollection = defaults.Matching.ProductCollection
 	}
@@ -280,6 +322,15 @@ func normalizeAIProcurementConfig(config *aiProcurementConfig) {
 	}
 	if config.Matching.FinanceProductCollection == "" {
 		config.Matching.FinanceProductCollection = defaults.Matching.FinanceProductCollection
+	}
+	if config.Matching.EmbeddingProvider == "" {
+		config.Matching.EmbeddingProvider = defaults.Matching.EmbeddingProvider
+	}
+	if config.Matching.EmbeddingBaseURL == "" {
+		config.Matching.EmbeddingBaseURL = defaults.Matching.EmbeddingBaseURL
+	}
+	if config.Matching.EmbeddingAPIKeyEnv == "" {
+		config.Matching.EmbeddingAPIKeyEnv = defaults.Matching.EmbeddingAPIKeyEnv
 	}
 	if config.Matching.EmbeddingModel == "" {
 		config.Matching.EmbeddingModel = defaults.Matching.EmbeddingModel

@@ -316,9 +316,16 @@ export interface AIProcurementConfig {
     vectorEnabled: boolean
     vectorProvider: string
     vectorEndpoint: string
+    vectorDatabase: string
+    vectorUsername: string
+    vectorPasswordEnv: string
+    vectorConnectionEnv: string
     productCollection: string
     supplierCollection: string
     financeProductCollection: string
+    embeddingProvider: string
+    embeddingBaseUrl: string
+    embeddingApiKeyEnv: string
     embeddingModel: string
     embeddingDimension: number
     vectorTopK: number
