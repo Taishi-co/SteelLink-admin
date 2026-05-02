@@ -2,7 +2,7 @@
 
 ## 实施内容
 
-1. 扩展 Admin AI采购配置结构，补齐 Milvus database、用户名、密码环境变量名、embedding provider、embedding endpoint 和 embedding API Key 环境变量名。
+1. 扩展 Admin AI采购配置结构，补齐 pgvector DSN 环境变量名、Postgres database、用户名、密码环境变量名、embedding provider、embedding endpoint 和 embedding API Key 环境变量名。
 2. 扩展前端配置页对应表单字段。
 3. 新增内部运行时配置接口，复用同一份持久化配置。
 4. 在 `.env.example` 中记录可选共享同步 token。

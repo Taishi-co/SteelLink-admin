@@ -319,6 +319,7 @@ export interface AIProcurementConfig {
     vectorDatabase: string
     vectorUsername: string
     vectorPasswordEnv: string
+    vectorConnectionEnv: string
     productCollection: string
     supplierCollection: string
     financeProductCollection: string

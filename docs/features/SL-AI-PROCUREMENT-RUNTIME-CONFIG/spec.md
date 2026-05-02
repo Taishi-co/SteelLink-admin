@@ -2,7 +2,7 @@
 
 ## 背景
 
-运营需要在 Admin 平台直接调整 AI 采购开关，例如是否启用模型解析、是否启用 Milvus 向量召回、Milvus 集合名、embedding endpoint 和 hybrid 权重。仅依赖业务后端 `.env` 会导致每次调整都需要改服务器配置并重启。
+运营需要在 Admin 平台直接调整 AI 采购开关，例如是否启用模型解析、是否启用 pgvector 向量召回、pgvector 表名、embedding endpoint 和 hybrid 权重。仅依赖业务后端 `.env` 会导致每次调整都需要改服务器配置并重启。
 
 ## 目标
 
@@ -18,11 +18,11 @@
 
 ## 非范围
 
-- 不保存 MiniMax API Key 或 Milvus 密码明文。
-- 不实现 Milvus 健康检查、索引重建或商品向量同步 job。
+- 不保存 MiniMax API Key 或 pgvector/Postgres 密码明文。
+- 不实现 pgvector 健康检查、索引重建或商品向量同步 job。
 
 ## 安全规则
 
-- Admin 页面只保存 `MINIMAX_API_KEY`、`MILVUS_PASSWORD` 这类环境变量名。
+- Admin 页面只保存 `MINIMAX_API_KEY`、`PGVECTOR_DSN`、`PGVECTOR_PASSWORD` 这类环境变量名。
 - 真实密钥仍由服务器环境变量提供。
 - 生产环境应配置 `AI_PROCUREMENT_CONFIG_SYNC_TOKEN`，业务后端拉取配置时带 `X-Internal-Token`。

@@ -5,7 +5,7 @@
 - [x] Admin backend `go test ./...` 已通过
 - [x] Admin backend build 已通过
 - [x] Admin frontend build 已通过
-- [x] 已确认页面不保存真实 API Key 或 Milvus 密码
+- [x] 已确认页面不保存真实 API Key、pgvector DSN 或 Postgres 密码
 - [ ] 已确认生产环境配置 `AI_PROCUREMENT_CONFIG_SYNC_TOKEN`
 
 ## 发布后验证

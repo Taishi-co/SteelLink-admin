@@ -4,9 +4,9 @@
 
 - AI采购配置页可切换“启用模型解析”。
 - AI采购配置页可切换“启用向量检索”。
-- 页面可编辑 Milvus endpoint、database、用户名、密码环境变量名和三个集合名。
+- 页面可编辑 pgvector DSN 环境变量名、Postgres database、用户名、密码环境变量名和三个向量表名。
 - 页面可编辑 embedding provider、endpoint、API Key 环境变量名、模型、维度、TopK 和 hybrid 权重。
-- 页面不提供真实 API Key 或 Milvus 密码输入框。
+- 页面不提供真实 API Key、pgvector DSN 或 Postgres 密码输入框。
 
 ## Admin 后端
 

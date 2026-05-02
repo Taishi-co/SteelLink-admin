@@ -47,6 +47,7 @@ type aiProcurementMatchingConfig struct {
 	VectorDatabase           string  `json:"vectorDatabase"`
 	VectorUsername           string  `json:"vectorUsername"`
 	VectorPasswordEnv        string  `json:"vectorPasswordEnv"`
+	VectorConnectionEnv      string  `json:"vectorConnectionEnv"`
 	ProductCollection        string  `json:"productCollection"`
 	SupplierCollection       string  `json:"supplierCollection"`
 	FinanceProductCollection string  `json:"financeProductCollection"`
@@ -215,10 +216,11 @@ func defaultAIProcurementConfig() aiProcurementConfig {
 		Matching: aiProcurementMatchingConfig{
 			Mode:                     "hybrid",
 			VectorEnabled:            false,
-			VectorProvider:           "milvus",
-			VectorEndpoint:           "localhost:19530",
-			VectorDatabase:           "steellink_ai",
-			VectorPasswordEnv:        "MILVUS_PASSWORD",
+			VectorProvider:           "pgvector",
+			VectorEndpoint:           "",
+			VectorDatabase:           "steellink_vectors",
+			VectorPasswordEnv:        "PGVECTOR_PASSWORD",
+			VectorConnectionEnv:      "PGVECTOR_DSN",
 			ProductCollection:        "ai_product_embeddings",
 			SupplierCollection:       "ai_supplier_embeddings",
 			FinanceProductCollection: "ai_finance_product_embeddings",
@@ -308,6 +310,9 @@ func normalizeAIProcurementConfig(config *aiProcurementConfig) {
 	}
 	if config.Matching.VectorPasswordEnv == "" {
 		config.Matching.VectorPasswordEnv = defaults.Matching.VectorPasswordEnv
+	}
+	if config.Matching.VectorConnectionEnv == "" {
+		config.Matching.VectorConnectionEnv = defaults.Matching.VectorConnectionEnv
 	}
 	if config.Matching.ProductCollection == "" {
 		config.Matching.ProductCollection = defaults.Matching.ProductCollection

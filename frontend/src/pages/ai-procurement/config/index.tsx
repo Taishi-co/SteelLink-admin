@@ -289,45 +289,52 @@ export default function AIProcurementConfigPage() {
               <Row gutter={12}>
                 <Col span={12}>
                   <Form.Item name={['matching', 'vectorProvider']} label="向量数据库">
-                    <Input placeholder="milvus" />
+                    <Input placeholder="pgvector" />
                   </Form.Item>
                 </Col>
                 <Col span={12}>
-                  <Form.Item name={['matching', 'vectorEndpoint']} label="向量库地址">
-                    <Input placeholder="localhost:19530" />
+                  <Form.Item name={['matching', 'vectorConnectionEnv']} label="pgvector DSN环境变量">
+                    <Input placeholder="PGVECTOR_DSN" />
                   </Form.Item>
                 </Col>
               </Row>
               <Row gutter={12}>
                 <Col span={8}>
-                  <Form.Item name={['matching', 'vectorDatabase']} label="Milvus Database">
-                    <Input placeholder="steellink_ai" />
+                  <Form.Item name={['matching', 'vectorEndpoint']} label="向量库连接串">
+                    <Input placeholder="可选，推荐使用 PGVECTOR_DSN 环境变量" />
                   </Form.Item>
                 </Col>
                 <Col span={8}>
-                  <Form.Item name={['matching', 'vectorUsername']} label="Milvus 用户名">
+                  <Form.Item name={['matching', 'vectorDatabase']} label="Postgres Database">
+                    <Input placeholder="steellink_vectors" />
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item name={['matching', 'vectorUsername']} label="Postgres 用户名">
                     <Input placeholder="可选" />
                   </Form.Item>
                 </Col>
-                <Col span={8}>
-                  <Form.Item name={['matching', 'vectorPasswordEnv']} label="Milvus密码环境变量">
-                    <Input placeholder="MILVUS_PASSWORD" />
-                  </Form.Item>
-                </Col>
               </Row>
               <Row gutter={12}>
                 <Col span={8}>
-                  <Form.Item name={['matching', 'productCollection']} label="商品集合">
+                  <Form.Item name={['matching', 'vectorPasswordEnv']} label="Postgres密码环境变量">
+                    <Input placeholder="PGVECTOR_PASSWORD" />
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item name={['matching', 'productCollection']} label="商品向量表">
                     <Input placeholder="ai_product_embeddings" />
                   </Form.Item>
                 </Col>
                 <Col span={8}>
-                  <Form.Item name={['matching', 'supplierCollection']} label="供应商集合">
+                  <Form.Item name={['matching', 'supplierCollection']} label="供应商向量表">
                     <Input placeholder="ai_supplier_embeddings" />
                   </Form.Item>
                 </Col>
+              </Row>
+              <Row gutter={12}>
                 <Col span={8}>
-                  <Form.Item name={['matching', 'financeProductCollection']} label="融资产品集合">
+                  <Form.Item name={['matching', 'financeProductCollection']} label="融资产品向量表">
                     <Input placeholder="ai_finance_product_embeddings" />
                   </Form.Item>
                 </Col>

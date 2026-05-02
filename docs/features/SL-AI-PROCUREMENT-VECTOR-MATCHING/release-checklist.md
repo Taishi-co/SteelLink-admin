@@ -10,7 +10,7 @@
 
 - [ ] `./harness/review.sh docs/features/SL-AI-PROCUREMENT-MODEL-CONFIG` 已通过
 - [ ] `./harness/release.sh docs/features/SL-AI-PROCUREMENT-MODEL-CONFIG` 已通过
-- [ ] 已确认不在管理端保存 Milvus 密码
+- [ ] 已确认不在管理端保存 pgvector DSN 或 Postgres 密码
 - [ ] 已确认默认关闭向量召回
 
 ## 回滚信息
