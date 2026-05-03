@@ -8,13 +8,13 @@
 
 - 在 Admin AI采购配置页补齐运行时开关和连接元数据字段。
 - Admin 后端保存模型解析、向量召回和 embedding 配置，但不保存真实密钥。
-- Admin 后端提供内部只读运行时配置接口，供 SteelLink-backend 拉取。
+- Admin 后端保存配置到 MySQL 后同步写入 Redis，供 SteelLink-backend 直接读取。
 
 ## 范围
 
 - 扩展 `GET/PUT /api/v1/ai-procurement/config` 的 `matching` 字段。
-- 新增 `GET /api/v1/internal/ai-procurement/runtime-config`。
-- 通过 `AI_PROCUREMENT_CONFIG_SYNC_TOKEN` 支持内部接口鉴权。
+- `PUT /api/v1/ai-procurement/config` 保存成功后写入 Redis key `ai_procurement_config`。
+- 保留 `GET /api/v1/internal/ai-procurement/runtime-config` 作为人工排查接口，不作为业务后端运行时链路。
 
 ## 非范围
 
@@ -25,4 +25,4 @@
 
 - Admin 页面只保存 `MINIMAX_API_KEY`、`PGVECTOR_DSN`、`PGVECTOR_PASSWORD` 这类环境变量名。
 - 真实密钥仍由服务器环境变量提供。
-- 生产环境应配置 `AI_PROCUREMENT_CONFIG_SYNC_TOKEN`，业务后端拉取配置时带 `X-Internal-Token`。
+- 生产环境 Admin 和 Backend 应连接同一个 Redis 实例与 DB。

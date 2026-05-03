@@ -29,6 +29,15 @@ func main() {
 		}
 	}()
 
+	if err := database.InitRedis(); err != nil {
+		log.Fatalf("Failed to connect Redis: %v", err)
+	}
+	defer func() {
+		if err := database.CloseRedis(); err != nil {
+			log.Printf("Failed to close Redis: %v", err)
+		}
+	}()
+
 	handler.AutoMigrate(database.GetDB())
 	log.Println("Auto-migration completed")
 
