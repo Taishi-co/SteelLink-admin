@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"os"
 	"strings"
@@ -173,9 +174,21 @@ func UpdateAIProcurementConfig(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 		return
 	}
+	if err := syncAIProcurementConfigToRedis(ctx, payload); err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"code": 503, "message": "redis unavailable: " + err.Error()})
+		return
+	}
 	req.UpdatedAt = &now
 	logOpFromContext(c, db, "ai_procurement", "update_config", 0, string(payload))
 	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": req})
+}
+
+func syncAIProcurementConfigToRedis(ctx context.Context, payload []byte) error {
+	client := database.GetRedis()
+	if client == nil {
+		return errors.New("redis client is not initialized")
+	}
+	return client.Set(ctx, aiProcurementConfigKey, string(payload), 0).Err()
 }
 
 func ensureAdminConfigTable(ctx context.Context, db *sql.DB) error {
