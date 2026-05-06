@@ -12,7 +12,10 @@ const RoleList = lazy(() => import('../pages/system/role'))
 const MenuList = lazy(() => import('../pages/system/menu'))
 const UserList = lazy(() => import('../pages/user'))
 const EnterpriseList = lazy(() => import('../pages/enterprise'))
+const EnterpriseServiceApplications = lazy(() => import('../pages/enterprise/service-applications'))
 const ProductList = lazy(() => import('../pages/product'))
+const WarehouseServiceAudit = lazy(() => import('../pages/service-offer/warehouse'))
+const LogisticsServiceAudit = lazy(() => import('../pages/service-offer/logistics'))
 const OrderList = lazy(() => import('../pages/order'))
 const CategoryList = lazy(() => import('../pages/product/category'))
 const OperationLogList = lazy(() => import('../pages/log'))
@@ -90,6 +93,10 @@ const router = createBrowserRouter([
         element: <EnterpriseList />,
       },
       {
+        path: 'enterprise/services',
+        element: <EnterpriseServiceApplications />,
+      },
+      {
         path: 'product',
         children: [
           {
@@ -105,6 +112,14 @@ const router = createBrowserRouter([
             element: <CategoryList />,
           },
         ],
+      },
+      {
+        path: 'service-offers/warehouse',
+        element: <WarehouseServiceAudit />,
+      },
+      {
+        path: 'service-offers/logistics',
+        element: <LogisticsServiceAudit />,
       },
       {
         path: 'ai-procurement/config',

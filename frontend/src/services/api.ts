@@ -164,6 +164,53 @@ export const enterpriseApi = {
   list: (params: PageParams) => get<PageResult<EnterpriseItem>>('/enterprises', { params }),
   get: (id: number) => get<EnterpriseItem>(`/enterprises/${id}`),
   audit: (id: number, data: { status: number; auditRemark?: string }) => put(`/enterprises/${id}/audit`, data),
+  services: (id: number) => get<ServicePermissionItem[]>(`/enterprises/${id}/services`),
+  updateServiceStatus: (id: number, service: string, data: { status: number; reason?: string }) =>
+    put(`/enterprises/${id}/services/${service}/status`, data),
+}
+
+export interface ServiceDocumentItem {
+  id: number
+  applicationId: number
+  documentType: string
+  fileUrl: string
+  createdAt: string
+}
+
+export interface ServiceApplicationItem {
+  id: number
+  enterpriseId: number
+  enterpriseCode: string
+  enterpriseName: string
+  service: string
+  supplyRole: string
+  status: number
+  auditReason?: string
+  submittedBy: number
+  auditedBy?: number
+  auditedAt?: string
+  documents: ServiceDocumentItem[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ServicePermissionItem {
+  id: number
+  enterpriseId: number
+  enterpriseCode: string
+  service: string
+  supplyRole: string
+  status: number
+  auditReason?: string
+  approvedAt?: string
+  updatedAt: string
+}
+
+export const enterpriseServiceApi = {
+  listApplications: (params: PageParams & { service?: string }) =>
+    get<PageResult<ServiceApplicationItem>>('/enterprise-service-applications', { params }),
+  auditApplication: (id: number, data: { status: number; reason?: string }) =>
+    put(`/enterprise-service-applications/${id}/audit`, data),
 }
 
 // Product API
@@ -204,6 +251,34 @@ export const productApi = {
   list: (params: PageParams) => get<PageResult<ProductItem>>('/products', { params }),
   get: (id: number) => get<ProductItem>(`/products/${id}`),
   audit: (id: number, data: { status: number; auditRemark?: string }) => put(`/products/${id}/audit`, data),
+}
+
+export interface ServiceOfferItem {
+  id: number
+  type: 'warehouse' | 'logistics'
+  enterpriseId: number
+  name: string
+  province?: string
+  city?: string
+  address?: string
+  capacity?: number
+  availableCapacity?: number
+  routeStart?: string
+  routeEnd?: string
+  vehicleType?: string
+  loadCapacity?: number
+  priceRule?: string
+  status: number
+  auditRemark?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export const serviceOfferApi = {
+  listWarehouse: (params: PageParams) => get<PageResult<ServiceOfferItem>>('/warehouse-services', { params }),
+  auditWarehouse: (id: number, data: { status: number; auditRemark?: string }) => put(`/warehouse-services/${id}/audit`, data),
+  listLogistics: (params: PageParams) => get<PageResult<ServiceOfferItem>>('/logistics-services', { params }),
+  auditLogistics: (id: number, data: { status: number; auditRemark?: string }) => put(`/logistics-services/${id}/audit`, data),
 }
 
 // Order API

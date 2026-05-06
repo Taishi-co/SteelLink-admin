@@ -30,6 +30,7 @@ import {
   CloudServerOutlined,
   RocketOutlined,
   ExperimentOutlined,
+  TruckOutlined,
 } from '@ant-design/icons'
 import type { MenuProps } from 'antd'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
@@ -71,6 +72,7 @@ const iconMap: Record<string, React.ReactNode> = {
   CloudServerOutlined: <CloudServerOutlined />,
   RocketOutlined: <RocketOutlined />,
   ExperimentOutlined: <ExperimentOutlined />,
+  TruckOutlined: <TruckOutlined />,
 }
 
 const fallbackMenuItems: MenuProps['items'] = [
@@ -92,6 +94,9 @@ const fallbackMenuItems: MenuProps['items'] = [
     children: [
       { key: '/user', icon: <UserOutlined />, label: '用户管理' },
       { key: '/enterprise', icon: <BankOutlined />, label: '企业审核' },
+      { key: '/enterprise/services', icon: <AuditOutlined />, label: '服务权限审核' },
+      { key: '/service-offers/warehouse', icon: <ContainerOutlined />, label: '仓储资源审核' },
+      { key: '/service-offers/logistics', icon: <TruckOutlined />, label: '物流资源审核' },
     ],
   },
   {
@@ -156,6 +161,9 @@ const pageMeta: Record<string, { title: string; description: string }> = {
   '/system/menu': { title: '菜单配置', description: '导航结构与功能入口' },
   '/user': { title: '用户管理', description: '平台注册用户管理' },
   '/enterprise': { title: '企业审核', description: '入驻企业资质审核' },
+  '/enterprise/services': { title: '服务权限审核', description: '审核企业销售、采购、物流、仓储和金融服务权限' },
+  '/service-offers/warehouse': { title: '仓储资源审核', description: '审核仓储方上架的仓储服务资源' },
+  '/service-offers/logistics': { title: '物流资源审核', description: '审核物流方上架的物流服务资源' },
   '/product': { title: '商品管理', description: '商品信息与审核管理' },
   '/product/order': { title: '订单管理', description: '交易订单与履约管理' },
   '/product/category': { title: '类目配置', description: '商品类目结构管理' },
@@ -206,7 +214,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const getOpenKeys = () => {
     const path = location.pathname
     if (path.startsWith('/system')) return ['/system']
-    if (path === '/user' || path === '/enterprise') return ['/business']
+    if (path === '/user' || path.startsWith('/enterprise') || path.startsWith('/service-offers')) return ['/business']
     if (path.startsWith('/product')) return ['/product-center']
     if (path.startsWith('/ai-procurement')) return ['/ai-procurement']
     return []
