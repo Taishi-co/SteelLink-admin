@@ -17,7 +17,7 @@ import {
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { enterpriseApi, EnterpriseItem, PageParams } from '../../services/api'
+import { enterpriseApi, EnterpriseItem, PageParams, ServicePermissionItem } from '../../services/api'
 import { formatDateTime } from '../../utils/format'
 
 const statusMeta = {
@@ -27,12 +27,30 @@ const statusMeta = {
 } as const
 
 const EMPTY_ENTERPRISE_ROWS: EnterpriseItem[] = []
+const EMPTY_SERVICE_ROWS: ServicePermissionItem[] = []
+
+const serviceMeta: Record<string, { text: string; color: string }> = {
+  sales: { text: '销售服务', color: 'blue' },
+  procurement: { text: '采购服务', color: 'green' },
+  logistics: { text: '物流服务', color: 'cyan' },
+  warehouse: { text: '仓储服务', color: 'purple' },
+  finance: { text: '金融服务', color: 'gold' },
+}
+
+const serviceStatusMeta: Record<number, { text: string; color: string }> = {
+  1: { text: '审核中', color: 'processing' },
+  2: { text: '已开通', color: 'success' },
+  3: { text: '已驳回', color: 'error' },
+  4: { text: '已暂停', color: 'warning' },
+}
 
 export default function EnterpriseList() {
   const [params, setParams] = useState<PageParams>({ page: 1, pageSize: 10 })
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [auditTarget, setAuditTarget] = useState<EnterpriseItem | null>(null)
+  const [serviceTarget, setServiceTarget] = useState<{ enterpriseId: number; service: string } | null>(null)
   const [auditForm] = Form.useForm<{ status: number; auditRemark?: string }>()
+  const [serviceForm] = Form.useForm<{ status: number; reason?: string }>()
   const queryClient = useQueryClient()
 
   const { data, isLoading } = useQuery({
@@ -46,8 +64,15 @@ export default function EnterpriseList() {
     enabled: selectedId !== null,
   })
 
+  const { data: serviceData, isFetching: serviceLoading } = useQuery({
+    queryKey: ['enterprise-services', selectedId],
+    queryFn: () => enterpriseApi.services(selectedId!),
+    enabled: selectedId !== null,
+  })
+
   const rows = data?.data.data.list ?? EMPTY_ENTERPRISE_ROWS
   const detail = detailData?.data.data
+  const serviceRows = serviceData?.data.data ?? EMPTY_SERVICE_ROWS
   const total = data?.data.data.total ?? 0
 
   const summary = useMemo(
@@ -74,6 +99,17 @@ export default function EnterpriseList() {
       if (selectedId !== null) {
         void queryClient.invalidateQueries({ queryKey: ['enterprise-detail', selectedId] })
       }
+    },
+  })
+
+  const { mutate: updateServiceStatus, isPending: serviceSubmitting } = useMutation({
+    mutationFn: ({ enterpriseId, service, values }: { enterpriseId: number; service: string; values: { status: number; reason?: string } }) =>
+      enterpriseApi.updateServiceStatus(enterpriseId, service, values),
+    onSuccess: () => {
+      message.success('企业服务权限已更新')
+      setServiceTarget(null)
+      serviceForm.resetFields()
+      void queryClient.invalidateQueries({ queryKey: ['enterprise-services', selectedId] })
     },
   })
 
@@ -217,6 +253,52 @@ export default function EnterpriseList() {
             <Descriptions.Item label="更新时间">{formatDateTime(detail?.updatedAt)}</Descriptions.Item>
           </Descriptions>
         )}
+
+        <div className="mt-4">
+          <Card size="small" title="平台服务权限" loading={serviceLoading}>
+            <Table
+              size="small"
+              pagination={false}
+              rowKey="service"
+              dataSource={Object.keys(serviceMeta).map((service) => serviceRows.find((row) => row.service === service) || {
+                id: 0,
+                enterpriseId: selectedId || 0,
+                enterpriseCode: detail?.name || '',
+                service,
+                supplyRole: '',
+                status: 0,
+                updatedAt: '',
+              })}
+              columns={[
+                {
+                  title: '服务',
+                  dataIndex: 'service',
+                  render: (service: string) => <Tag color={serviceMeta[service]?.color}>{serviceMeta[service]?.text}</Tag>,
+                },
+                {
+                  title: '状态',
+                  dataIndex: 'status',
+                  render: (status: number) => status ? <Tag color={serviceStatusMeta[status]?.color}>{serviceStatusMeta[status]?.text}</Tag> : <Tag>未开通</Tag>,
+                },
+                {
+                  title: '操作',
+                  render: (_, record) => (
+                    <Button
+                      type="link"
+                      size="small"
+                      onClick={() => {
+                        setServiceTarget({ enterpriseId: selectedId!, service: record.service })
+                        serviceForm.setFieldsValue({ status: record.status || 2, reason: record.auditReason || '' })
+                      }}
+                    >
+                      控制
+                    </Button>
+                  ),
+                },
+              ]}
+            />
+          </Card>
+        </div>
       </Drawer>
 
       <Modal
@@ -256,6 +338,40 @@ export default function EnterpriseList() {
           </Form.Item>
           <Form.Item label="审核备注" name="auditRemark">
             <Input.TextArea rows={4} placeholder="请输入审核说明，方便后续追踪与沟通。" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={`服务权限控制${serviceTarget ? ` · ${serviceMeta[serviceTarget.service]?.text}` : ''}`}
+        open={serviceTarget !== null}
+        onCancel={() => {
+          setServiceTarget(null)
+          serviceForm.resetFields()
+        }}
+        onOk={() => {
+          serviceForm.validateFields().then((values) => {
+            if (!serviceTarget) return
+            updateServiceStatus({ enterpriseId: serviceTarget.enterpriseId, service: serviceTarget.service, values })
+          })
+        }}
+        confirmLoading={serviceSubmitting}
+        okText="保存"
+        destroyOnHidden
+      >
+        <Form form={serviceForm} layout="vertical" initialValues={{ status: 2 }}>
+          <Form.Item label="权限状态" name="status" rules={[{ required: true, message: '请选择权限状态' }]}>
+            <Segmented
+              block
+              options={[
+                { label: '开通', value: 2 },
+                { label: '驳回', value: 3 },
+                { label: '暂停', value: 4 },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item label="原因说明" name="reason">
+            <Input.TextArea rows={4} placeholder="请输入开通、驳回或暂停原因" />
           </Form.Item>
         </Form>
       </Modal>

@@ -1,0 +1,200 @@
+package handler
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/Taishi-co/SteelLink-admin/backend/internal/database"
+	"github.com/gin-gonic/gin"
+)
+
+type serviceOfferItem struct {
+	ID                int64     `json:"id"`
+	Type              string    `json:"type"`
+	EnterpriseID      int64     `json:"enterpriseId"`
+	Name              string    `json:"name"`
+	Province          string    `json:"province,omitempty"`
+	City              string    `json:"city,omitempty"`
+	Address           string    `json:"address,omitempty"`
+	Capacity          float64   `json:"capacity,omitempty"`
+	AvailableCapacity float64   `json:"availableCapacity,omitempty"`
+	RouteStart        string    `json:"routeStart,omitempty"`
+	RouteEnd          string    `json:"routeEnd,omitempty"`
+	VehicleType       string    `json:"vehicleType,omitempty"`
+	LoadCapacity      float64   `json:"loadCapacity,omitempty"`
+	PriceRule         string    `json:"priceRule,omitempty"`
+	Status            int       `json:"status"`
+	AuditRemark       string    `json:"auditRemark,omitempty"`
+	CreatedAt         time.Time `json:"createdAt"`
+	UpdatedAt         time.Time `json:"updatedAt"`
+}
+
+func ensureServiceOfferTables(ctx context.Context, db *sql.DB) {
+	if !tableExists(ctx, db, "warehouse_services") {
+		db.ExecContext(ctx, `CREATE TABLE warehouse_services (
+			id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+			enterprise_id BIGINT UNSIGNED NOT NULL,
+			warehouse_name VARCHAR(200) NOT NULL,
+			province VARCHAR(50) DEFAULT '',
+			city VARCHAR(50) DEFAULT '',
+			district VARCHAR(50) DEFAULT '',
+			address VARCHAR(255) DEFAULT '',
+			capacity DECIMAL(12,2) DEFAULT 0,
+			available_capacity DECIMAL(12,2) DEFAULT 0,
+			service_types JSON NULL,
+			price_rule VARCHAR(500) DEFAULT '',
+			images JSON NULL,
+			certificates JSON NULL,
+			description TEXT,
+			status TINYINT DEFAULT 1,
+			audit_remark VARCHAR(500) DEFAULT '',
+			approved_at DATETIME NULL,
+			created_by BIGINT UNSIGNED DEFAULT 0,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_by BIGINT UNSIGNED DEFAULT 0,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			deleted_at DATETIME NULL,
+			INDEX idx_enterprise_id (enterprise_id),
+			INDEX idx_status (status),
+			INDEX idx_deleted_at (deleted_at)
+		)`)
+	}
+	if !tableExists(ctx, db, "logistics_services") {
+		db.ExecContext(ctx, `CREATE TABLE logistics_services (
+			id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+			enterprise_id BIGINT UNSIGNED NOT NULL,
+			name VARCHAR(200) NOT NULL,
+			route_start VARCHAR(100) DEFAULT '',
+			route_end VARCHAR(100) DEFAULT '',
+			service_scope VARCHAR(255) DEFAULT '',
+			vehicle_type VARCHAR(100) DEFAULT '',
+			load_capacity DECIMAL(12,2) DEFAULT 0,
+			price_rule VARCHAR(500) DEFAULT '',
+			images JSON NULL,
+			certificates JSON NULL,
+			description TEXT,
+			status TINYINT DEFAULT 1,
+			audit_remark VARCHAR(500) DEFAULT '',
+			approved_at DATETIME NULL,
+			created_by BIGINT UNSIGNED DEFAULT 0,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_by BIGINT UNSIGNED DEFAULT 0,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			deleted_at DATETIME NULL,
+			INDEX idx_enterprise_id (enterprise_id),
+			INDEX idx_status (status),
+			INDEX idx_deleted_at (deleted_at)
+		)`)
+	}
+}
+
+func ListWarehouseServiceOffers(c *gin.Context) {
+	listServiceOffers(c, "warehouse")
+}
+
+func ListLogisticsServiceOffers(c *gin.Context) {
+	listServiceOffers(c, "logistics")
+}
+
+func AuditWarehouseServiceOffer(c *gin.Context) {
+	auditServiceOffer(c, "warehouse_services")
+}
+
+func AuditLogisticsServiceOffer(c *gin.Context) {
+	auditServiceOffer(c, "logistics_services")
+}
+
+func listServiceOffers(c *gin.Context, offerType string) {
+	db := database.GetDB()
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+	ensureServiceOfferTables(ctx, db)
+	limit, offset := parsePageParams(c.Query("page"), c.Query("pageSize"))
+
+	table := "warehouse_services"
+	nameExpr := "warehouse_name"
+	selectCols := `id, enterprise_id, warehouse_name, COALESCE(province,''), COALESCE(city,''), COALESCE(address,''), COALESCE(capacity,0), COALESCE(available_capacity,0), '', '', '', 0, COALESCE(price_rule,''), status, COALESCE(audit_remark,''), created_at, updated_at`
+	if offerType == "logistics" {
+		table = "logistics_services"
+		nameExpr = "name"
+		selectCols = `id, enterprise_id, name, '', '', '', 0, 0, COALESCE(route_start,''), COALESCE(route_end,''), COALESCE(vehicle_type,''), COALESCE(load_capacity,0), COALESCE(price_rule,''), status, COALESCE(audit_remark,''), created_at, updated_at`
+	}
+
+	where := []string{"deleted_at IS NULL"}
+	args := []any{}
+	if status := c.Query("status"); status != "" {
+		where = append(where, "status = ?")
+		args = append(args, status)
+	}
+	if keyword := c.Query("keyword"); keyword != "" {
+		where = append(where, nameExpr+" LIKE ?")
+		args = append(args, "%"+keyword+"%")
+	}
+	whereClause := strings.Join(where, " AND ")
+	total, err := queryCount(ctx, db, fmt.Sprintf(`SELECT COUNT(*) FROM %s WHERE %s`, table, whereClause), args...)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+	queryArgs := append(append([]any{}, args...), limit, offset)
+	rows, err := db.QueryContext(ctx, fmt.Sprintf(`SELECT %s FROM %s WHERE %s ORDER BY id DESC LIMIT ? OFFSET ?`, selectCols, table, whereClause), queryArgs...)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+	defer rows.Close()
+	items := make([]serviceOfferItem, 0)
+	for rows.Next() {
+		var item serviceOfferItem
+		item.Type = offerType
+		if err := rows.Scan(&item.ID, &item.EnterpriseID, &item.Name, &item.Province, &item.City, &item.Address, &item.Capacity, &item.AvailableCapacity, &item.RouteStart, &item.RouteEnd, &item.VehicleType, &item.LoadCapacity, &item.PriceRule, &item.Status, &item.AuditRemark, &item.CreatedAt, &item.UpdatedAt); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+			return
+		}
+		items = append(items, item)
+	}
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": pageResult[serviceOfferItem]{List: items, Total: total}})
+}
+
+func auditServiceOffer(c *gin.Context, table string) {
+	db := database.GetDB()
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+	ensureServiceOfferTables(ctx, db)
+	var req struct {
+		Status      int    `json:"status"`
+		AuditRemark string `json:"auditRemark"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || (req.Status != 1 && req.Status != 2) {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "审核状态无效，仅支持 1(通过) 或 2(驳回)"})
+		return
+	}
+	statusValue := 2
+	if req.Status == 2 {
+		statusValue = 3
+	}
+	setParts := []string{"status = ?", "audit_remark = ?", "updated_at = ?"}
+	args := []any{statusValue, req.AuditRemark, time.Now()}
+	if statusValue == 2 {
+		setParts = append(setParts, "approved_at = ?")
+		args = append(args, time.Now())
+	} else {
+		setParts = append(setParts, "approved_at = NULL")
+	}
+	args = append(args, c.Param("id"))
+	result, err := db.ExecContext(ctx, fmt.Sprintf(`UPDATE %s SET %s WHERE id = ? AND deleted_at IS NULL`, table, strings.Join(setParts, ", ")), args...)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+	affected, _ := result.RowsAffected()
+	if affected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "资源不存在"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": true})
+}
