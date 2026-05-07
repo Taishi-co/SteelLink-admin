@@ -19,7 +19,7 @@ type serviceApplicationItem struct {
 	EnterpriseCode string         `json:"enterpriseCode"`
 	EnterpriseName string         `json:"enterpriseName"`
 	Service        string         `json:"service"`
-	SupplyRole     string         `json:"supplyRole"`
+	EnterpriseRole string         `json:"enterpriseRole"`
 	Status         int            `json:"status"`
 	AuditReason    string         `json:"auditReason"`
 	SubmittedBy    int64          `json:"submittedBy"`
@@ -43,7 +43,8 @@ type servicePermissionItem struct {
 	EnterpriseID   int64      `json:"enterpriseId"`
 	EnterpriseCode string     `json:"enterpriseCode"`
 	Service        string     `json:"service"`
-	SupplyRole     string     `json:"supplyRole"`
+	CapabilityKind string     `json:"capabilityKind"`
+	EnterpriseRole string     `json:"enterpriseRole"`
 	Status         int        `json:"status"`
 	AuditReason    string     `json:"auditReason"`
 	ApprovedAt     *time.Time `json:"approvedAt"`
@@ -57,7 +58,6 @@ func ensureEnterpriseServiceTables(ctx context.Context, db *sql.DB) {
 			enterprise_id BIGINT UNSIGNED NOT NULL,
 			enterprise_code VARCHAR(32) NOT NULL,
 			service VARCHAR(32) NOT NULL,
-			supply_role VARCHAR(32) NOT NULL,
 			status TINYINT NOT NULL DEFAULT 1,
 			audit_reason VARCHAR(500) NOT NULL DEFAULT '',
 			approved_at DATETIME NULL,
@@ -78,7 +78,6 @@ func ensureEnterpriseServiceTables(ctx context.Context, db *sql.DB) {
 			enterprise_id BIGINT UNSIGNED NOT NULL,
 			enterprise_code VARCHAR(32) NOT NULL,
 			service VARCHAR(32) NOT NULL,
-			supply_role VARCHAR(32) NOT NULL,
 			status TINYINT NOT NULL DEFAULT 1,
 			audit_reason VARCHAR(500) NOT NULL DEFAULT '',
 			submitted_by BIGINT UNSIGNED NOT NULL DEFAULT 0,
@@ -104,6 +103,66 @@ func ensureEnterpriseServiceTables(ctx context.Context, db *sql.DB) {
 			INDEX idx_application_id (application_id),
 			INDEX idx_deleted_at (deleted_at)
 		)`)
+	}
+	ensureCapabilityPermissionTable(ctx, db, "enterprise_trade_capability_permissions")
+	ensureCapabilityPermissionTable(ctx, db, "enterprise_provider_service_permissions")
+	migrateLegacyEnterpriseServicePermissions(ctx, db)
+}
+
+func ensureCapabilityPermissionTable(ctx context.Context, db *sql.DB, table string) {
+	if tableExists(ctx, db, table) {
+		return
+	}
+	db.ExecContext(ctx, fmt.Sprintf(`CREATE TABLE %s (
+		id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+		enterprise_id BIGINT UNSIGNED NOT NULL,
+		enterprise_code VARCHAR(32) NOT NULL,
+		service VARCHAR(32) NOT NULL,
+		status TINYINT NOT NULL DEFAULT 1,
+		audit_reason VARCHAR(500) NOT NULL DEFAULT '',
+		approved_at DATETIME NULL,
+		created_by BIGINT UNSIGNED NOT NULL DEFAULT 0,
+		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		updated_by BIGINT UNSIGNED NOT NULL DEFAULT 0,
+		updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+		deleted_at DATETIME NULL,
+		UNIQUE KEY uk_enterprise_service (enterprise_id, service),
+		INDEX idx_enterprise_code (enterprise_code),
+		INDEX idx_status (status),
+		INDEX idx_deleted_at (deleted_at)
+	)`, table))
+}
+
+func migrateLegacyEnterpriseServicePermissions(ctx context.Context, db *sql.DB) {
+	if !tableExists(ctx, db, "enterprise_service_permissions") {
+		return
+	}
+	rows, err := db.QueryContext(ctx, `
+		SELECT enterprise_id, enterprise_code, service, status, COALESCE(audit_reason, ''), approved_at, created_by, updated_by
+		FROM enterprise_service_permissions
+		WHERE deleted_at IS NULL`)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var enterpriseID, createdBy, updatedBy int64
+		var enterpriseCode, service, reason string
+		var status int
+		var approvedAt sql.NullTime
+		if err := rows.Scan(&enterpriseID, &enterpriseCode, &service, &status, &reason, &approvedAt, &createdBy, &updatedBy); err != nil {
+			continue
+		}
+		table := capabilityPermissionTable(service)
+		if table == "" {
+			continue
+		}
+		var count int
+		if err := db.QueryRowContext(ctx, fmt.Sprintf(`SELECT COUNT(*) FROM %s WHERE enterprise_id=? AND service=? AND deleted_at IS NULL`, table), enterpriseID, service).Scan(&count); err != nil || count > 0 {
+			continue
+		}
+		db.ExecContext(ctx, fmt.Sprintf(`INSERT INTO %s (enterprise_id, enterprise_code, service, status, audit_reason, approved_at, created_by, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, table),
+			enterpriseID, enterpriseCode, service, status, reason, approvedAt, createdBy, updatedBy)
 	}
 }
 
@@ -138,7 +197,7 @@ func ListEnterpriseServiceApplications(c *gin.Context) {
 
 	queryArgs := append(append([]any{}, args...), limit, offset)
 	rows, err := db.QueryContext(ctx, fmt.Sprintf(`
-		SELECT a.id, a.enterprise_id, a.enterprise_code, COALESCE(e.name, ''), a.service, a.supply_role, a.status,
+		SELECT a.id, a.enterprise_id, a.enterprise_code, COALESCE(e.name, ''), a.service, a.status,
 		       COALESCE(a.audit_reason, ''), a.submitted_by, COALESCE(a.audited_by, 0), a.audited_at, a.created_at, a.updated_at
 		FROM enterprise_service_applications a
 		LEFT JOIN enterprises e ON e.id = a.enterprise_id
@@ -155,10 +214,11 @@ func ListEnterpriseServiceApplications(c *gin.Context) {
 	for rows.Next() {
 		var item serviceApplicationItem
 		var auditedAt sql.NullTime
-		if err := rows.Scan(&item.ID, &item.EnterpriseID, &item.EnterpriseCode, &item.EnterpriseName, &item.Service, &item.SupplyRole, &item.Status, &item.AuditReason, &item.SubmittedBy, &item.AuditedBy, &auditedAt, &item.CreatedAt, &item.UpdatedAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.EnterpriseID, &item.EnterpriseCode, &item.EnterpriseName, &item.Service, &item.Status, &item.AuditReason, &item.SubmittedBy, &item.AuditedBy, &auditedAt, &item.CreatedAt, &item.UpdatedAt); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 			return
 		}
+		item.EnterpriseRole = serviceToEnterpriseRole(item.Service)
 		if auditedAt.Valid {
 			item.AuditedAt = &auditedAt.Time
 		}
@@ -189,9 +249,9 @@ func AuditEnterpriseServiceApplication(c *gin.Context) {
 	id := c.Param("id")
 
 	var enterpriseID int64
-	var enterpriseCode, service, supplyRole string
-	if err := db.QueryRowContext(ctx, `SELECT enterprise_id, enterprise_code, service, supply_role FROM enterprise_service_applications WHERE id = ? AND deleted_at IS NULL`, id).
-		Scan(&enterpriseID, &enterpriseCode, &service, &supplyRole); err != nil {
+	var enterpriseCode, service string
+	if err := db.QueryRowContext(ctx, `SELECT enterprise_id, enterprise_code, service FROM enterprise_service_applications WHERE id = ? AND deleted_at IS NULL`, id).
+		Scan(&enterpriseID, &enterpriseCode, &service); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "服务申请不存在"})
 		return
 	}
@@ -208,7 +268,7 @@ func AuditEnterpriseServiceApplication(c *gin.Context) {
 	if req.Status == 2 {
 		approvedAt = sql.NullTime{Time: now, Valid: true}
 	}
-	upsertEnterpriseServicePermission(ctx, db, enterpriseID, enterpriseCode, service, supplyRole, permissionStatus, req.Reason, approvedAt, adminIDValue)
+	upsertEnterpriseServicePermission(ctx, db, enterpriseID, enterpriseCode, service, permissionStatus, req.Reason, approvedAt, adminIDValue)
 
 	logOpFromContext(c, db, "enterprise_service", "audit", 0, fmt.Sprintf(`{"id":"%s","status":%d}`, id, req.Status))
 	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": true})
@@ -235,8 +295,7 @@ func UpdateEnterpriseServicePermission(c *gin.Context) {
 		return
 	}
 	service := c.Param("service")
-	supplyRole := expectedSupplyRole(service)
-	if supplyRole == "" {
+	if serviceToEnterpriseRole(service) == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "平台服务无效"})
 		return
 	}
@@ -253,7 +312,7 @@ func UpdateEnterpriseServicePermission(c *gin.Context) {
 	if req.Status == 2 {
 		approvedAt = sql.NullTime{Time: now, Valid: true}
 	}
-	upsertEnterpriseServicePermission(ctx, db, enterpriseID, enterpriseCode, service, supplyRole, req.Status, req.Reason, approvedAt, normalizeAdminID(adminID))
+	upsertEnterpriseServicePermission(ctx, db, enterpriseID, enterpriseCode, service, req.Status, req.Reason, approvedAt, normalizeAdminID(adminID))
 	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": true})
 }
 
@@ -263,29 +322,33 @@ func ListEnterpriseServicePermissions(c *gin.Context) {
 	defer cancel()
 	ensureEnterpriseServiceTables(ctx, db)
 
-	rows, err := db.QueryContext(ctx, `
-		SELECT id, enterprise_id, enterprise_code, service, supply_role, status, COALESCE(audit_reason, ''), approved_at, updated_at
-		FROM enterprise_service_permissions
-		WHERE deleted_at IS NULL AND enterprise_id = ?
-		ORDER BY service ASC`, c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
-		return
-	}
-	defer rows.Close()
-
 	items := make([]servicePermissionItem, 0)
-	for rows.Next() {
-		var item servicePermissionItem
-		var approvedAt sql.NullTime
-		if err := rows.Scan(&item.ID, &item.EnterpriseID, &item.EnterpriseCode, &item.Service, &item.SupplyRole, &item.Status, &item.AuditReason, &approvedAt, &item.UpdatedAt); err != nil {
+	for _, table := range []string{"enterprise_trade_capability_permissions", "enterprise_provider_service_permissions"} {
+		rows, err := db.QueryContext(ctx, fmt.Sprintf(`
+			SELECT id, enterprise_id, enterprise_code, service, status, COALESCE(audit_reason, ''), approved_at, updated_at
+			FROM %s
+			WHERE deleted_at IS NULL AND enterprise_id = ?
+			ORDER BY service ASC`, table), c.Param("id"))
+		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 			return
 		}
-		if approvedAt.Valid {
-			item.ApprovedAt = &approvedAt.Time
+		for rows.Next() {
+			var item servicePermissionItem
+			var approvedAt sql.NullTime
+			if err := rows.Scan(&item.ID, &item.EnterpriseID, &item.EnterpriseCode, &item.Service, &item.Status, &item.AuditReason, &approvedAt, &item.UpdatedAt); err != nil {
+				rows.Close()
+				c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+				return
+			}
+			item.EnterpriseRole = serviceToEnterpriseRole(item.Service)
+			item.CapabilityKind = capabilityKind(item.Service)
+			if approvedAt.Valid {
+				item.ApprovedAt = &approvedAt.Time
+			}
+			items = append(items, item)
 		}
-		items = append(items, item)
+		rows.Close()
 	}
 	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": items})
 }
@@ -306,21 +369,47 @@ func listApplicationDocuments(ctx context.Context, db *sql.DB, applicationID int
 	return result
 }
 
-func upsertEnterpriseServicePermission(ctx context.Context, db *sql.DB, enterpriseID int64, enterpriseCode, service, supplyRole string, status int, reason string, approvedAt sql.NullTime, adminID int64) {
-	var id int64
-	err := db.QueryRowContext(ctx, `SELECT id FROM enterprise_service_permissions WHERE enterprise_id=? AND service=? AND deleted_at IS NULL`, enterpriseID, service).Scan(&id)
-	if err == nil {
-		db.ExecContext(ctx, `UPDATE enterprise_service_permissions SET status=?, audit_reason=?, approved_at=?, updated_by=?, updated_at=NOW() WHERE id=?`, status, reason, approvedAt, adminID, id)
+func upsertEnterpriseServicePermission(ctx context.Context, db *sql.DB, enterpriseID int64, enterpriseCode, service string, status int, reason string, approvedAt sql.NullTime, adminID int64) {
+	table := capabilityPermissionTable(service)
+	if table == "" {
 		return
 	}
-	db.ExecContext(ctx, `INSERT INTO enterprise_service_permissions (enterprise_id, enterprise_code, service, supply_role, status, audit_reason, approved_at, created_by, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		enterpriseID, enterpriseCode, service, supplyRole, status, reason, approvedAt, adminID, adminID)
+	var id int64
+	err := db.QueryRowContext(ctx, fmt.Sprintf(`SELECT id FROM %s WHERE enterprise_id=? AND service=? AND deleted_at IS NULL`, table), enterpriseID, service).Scan(&id)
+	if err == nil {
+		db.ExecContext(ctx, fmt.Sprintf(`UPDATE %s SET status=?, audit_reason=?, approved_at=?, updated_by=?, updated_at=NOW() WHERE id=?`, table), status, reason, approvedAt, adminID, id)
+		return
+	}
+	db.ExecContext(ctx, fmt.Sprintf(`INSERT INTO %s (enterprise_id, enterprise_code, service, status, audit_reason, approved_at, created_by, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, table),
+		enterpriseID, enterpriseCode, service, status, reason, approvedAt, adminID, adminID)
 }
 
-func expectedSupplyRole(service string) string {
+func capabilityKind(service string) string {
+	switch service {
+	case "sales", "procurement":
+		return "trade"
+	case "logistics", "warehouse", "finance":
+		return "provider"
+	default:
+		return ""
+	}
+}
+
+func capabilityPermissionTable(service string) string {
+	switch capabilityKind(service) {
+	case "trade":
+		return "enterprise_trade_capability_permissions"
+	case "provider":
+		return "enterprise_provider_service_permissions"
+	default:
+		return ""
+	}
+}
+
+func serviceToEnterpriseRole(service string) string {
 	switch service {
 	case "sales":
-		return "supplier"
+		return "seller"
 	case "procurement":
 		return "buyer"
 	case "logistics":

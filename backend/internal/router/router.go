@@ -55,6 +55,8 @@ func RegisterRoutes(r *gin.Engine) {
 			protected.PUT("/warehouse-services/:id/audit", handler.AuditWarehouseServiceOffer)
 			protected.GET("/logistics-services", handler.ListLogisticsServiceOffers)
 			protected.PUT("/logistics-services/:id/audit", handler.AuditLogisticsServiceOffer)
+			protected.GET("/finance-services", handler.ListFinanceServiceOffers)
+			protected.PUT("/finance-services/:id/audit", handler.AuditFinanceServiceOffer)
 			protected.GET("/orders", handler.ListOrders)
 			protected.GET("/product-categories", handler.ListProductCategories)
 			protected.GET("/operation-logs", handler.ListOperationLogs)

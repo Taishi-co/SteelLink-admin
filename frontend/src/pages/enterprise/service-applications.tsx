@@ -13,8 +13,8 @@ const serviceMeta: Record<string, { text: string; color: string }> = {
   finance: { text: '金融服务', color: 'gold' },
 }
 
-const supplyRoleMeta: Record<string, string> = {
-  supplier: '供应商',
+const enterpriseRoleMeta: Record<string, string> = {
+  seller: '供应商',
   buyer: '采购商',
   logistics: '物流方',
   warehouse: '仓储方',
@@ -67,9 +67,9 @@ export default function EnterpriseServiceApplications() {
     },
     {
       title: '供应链角色',
-      dataIndex: 'supplyRole',
+      dataIndex: 'enterpriseRole',
       width: 120,
-      render: (value: string) => supplyRoleMeta[value] || value,
+      render: (value: string) => enterpriseRoleMeta[value] || value,
     },
     {
       title: '状态',
@@ -146,7 +146,7 @@ export default function EnterpriseServiceApplications() {
           <Descriptions bordered column={1} size="small">
             <Descriptions.Item label="企业">{selected.enterpriseName || selected.enterpriseCode}</Descriptions.Item>
             <Descriptions.Item label="平台服务">{serviceMeta[selected.service]?.text || selected.service}</Descriptions.Item>
-            <Descriptions.Item label="供应链角色">{supplyRoleMeta[selected.supplyRole] || selected.supplyRole}</Descriptions.Item>
+            <Descriptions.Item label="供应链角色">{enterpriseRoleMeta[selected.enterpriseRole] || selected.enterpriseRole}</Descriptions.Item>
             <Descriptions.Item label="审核状态">
               <Tag color={statusMeta[selected.status]?.color}>{statusMeta[selected.status]?.text}</Tag>
             </Descriptions.Item>

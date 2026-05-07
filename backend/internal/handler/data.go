@@ -104,35 +104,38 @@ type enterpriseItem struct {
 }
 
 type productItem struct {
-	ID            int64      `json:"id"`
-	Name          string     `json:"name"`
-	CategoryID    *int64     `json:"categoryId,omitempty"`
-	EnterpriseID  int64      `json:"enterpriseId"`
-	Category      string     `json:"category,omitempty"`
-	SubCategory   string     `json:"subCategory,omitempty"`
-	SteelMill     string     `json:"steelMill,omitempty"`
-	Spec          string     `json:"spec,omitempty"`
-	Material      string     `json:"material,omitempty"`
-	WarehouseName string     `json:"warehouseName,omitempty"`
-	WarehouseCode string     `json:"warehouseCode,omitempty"`
-	Province      string     `json:"province,omitempty"`
-	City          string     `json:"city,omitempty"`
-	District      string     `json:"district,omitempty"`
-	Address       string     `json:"address,omitempty"`
-	BundleNo      string     `json:"bundleNo,omitempty"`
-	Unit          string     `json:"unit,omitempty"`
-	Price         float64    `json:"price"`
-	Stock         float64    `json:"stock"`
-	MinOrderQty   float64    `json:"minOrderQty"`
-	DeliveryDays  int        `json:"deliveryDays"`
-	QuoteValidity int        `json:"quoteValidity"`
-	Description   string     `json:"description,omitempty"`
-	Images        []string   `json:"images,omitempty"`
-	Status        int        `json:"status"`
-	AuditRemark   string     `json:"auditRemark,omitempty"`
-	AuditedAt     *time.Time `json:"auditedAt,omitempty"`
-	CreatedAt     time.Time  `json:"createdAt"`
-	UpdatedAt     time.Time  `json:"updatedAt"`
+	ID                    int64      `json:"id"`
+	Name                  string     `json:"name"`
+	CategoryID            *int64     `json:"categoryId,omitempty"`
+	EnterpriseID          int64      `json:"enterpriseId"`
+	Category              string     `json:"category,omitempty"`
+	SubCategory           string     `json:"subCategory,omitempty"`
+	SteelMill             string     `json:"steelMill,omitempty"`
+	GoodsType             string     `json:"goodsType,omitempty"`
+	WarehouseServiceID    int64      `json:"warehouseServiceId,omitempty"`
+	WarehouseEnterpriseID int64      `json:"warehouseEnterpriseId,omitempty"`
+	Spec                  string     `json:"spec,omitempty"`
+	Material              string     `json:"material,omitempty"`
+	WarehouseName         string     `json:"warehouseName,omitempty"`
+	WarehouseCode         string     `json:"warehouseCode,omitempty"`
+	Province              string     `json:"province,omitempty"`
+	City                  string     `json:"city,omitempty"`
+	District              string     `json:"district,omitempty"`
+	Address               string     `json:"address,omitempty"`
+	BundleNo              string     `json:"bundleNo,omitempty"`
+	Unit                  string     `json:"unit,omitempty"`
+	Price                 float64    `json:"price"`
+	Stock                 float64    `json:"stock"`
+	MinOrderQty           float64    `json:"minOrderQty"`
+	DeliveryDays          int        `json:"deliveryDays"`
+	QuoteValidity         int        `json:"quoteValidity"`
+	Description           string     `json:"description,omitempty"`
+	Images                []string   `json:"images,omitempty"`
+	Status                int        `json:"status"`
+	AuditRemark           string     `json:"auditRemark,omitempty"`
+	AuditedAt             *time.Time `json:"auditedAt,omitempty"`
+	CreatedAt             time.Time  `json:"createdAt"`
+	UpdatedAt             time.Time  `json:"updatedAt"`
 }
 
 type orderItem struct {
@@ -212,12 +215,14 @@ type productSpecInfo struct {
 }
 
 type warehouseInfo struct {
-	WarehouseName string `json:"warehouse_name"`
-	WarehouseCode string `json:"warehouse_code"`
-	Province      string `json:"province"`
-	City          string `json:"city"`
-	District      string `json:"district"`
-	Address       string `json:"address"`
+	WarehouseServiceID    int64  `json:"warehouse_service_id"`
+	WarehouseEnterpriseID int64  `json:"warehouse_enterprise_id"`
+	WarehouseName         string `json:"warehouse_name"`
+	WarehouseCode         string `json:"warehouse_code"`
+	Province              string `json:"province"`
+	City                  string `json:"city"`
+	District              string `json:"district"`
+	Address               string `json:"address"`
 }
 
 type operationLogItem struct {
