@@ -183,7 +183,7 @@ export interface ServiceApplicationItem {
   enterpriseCode: string
   enterpriseName: string
   service: string
-  supplyRole: string
+  enterpriseRole: string
   status: number
   auditReason?: string
   submittedBy: number
@@ -199,7 +199,8 @@ export interface ServicePermissionItem {
   enterpriseId: number
   enterpriseCode: string
   service: string
-  supplyRole: string
+  capabilityKind?: 'trade' | 'provider'
+  enterpriseRole: string
   status: number
   auditReason?: string
   approvedAt?: string
@@ -222,6 +223,9 @@ export interface ProductItem {
   category?: string
   subCategory?: string
   steelMill?: string
+  goodsType?: 'spot' | 'futures'
+  warehouseServiceId?: number
+  warehouseEnterpriseId?: number
   spec?: string
   material?: string
   warehouseName?: string
@@ -255,7 +259,7 @@ export const productApi = {
 
 export interface ServiceOfferItem {
   id: number
-  type: 'warehouse' | 'logistics'
+  type: 'warehouse' | 'logistics' | 'finance'
   enterpriseId: number
   name: string
   province?: string
@@ -265,9 +269,23 @@ export interface ServiceOfferItem {
   availableCapacity?: number
   routeStart?: string
   routeEnd?: string
+  serviceScope?: string
   vehicleType?: string
   loadCapacity?: number
   priceRule?: string
+  loadingCapacity?: string
+  businessHours?: string
+  pledgeSupervision?: boolean
+  outboundVoucherReq?: string
+  quoteRules?: string
+  fleetName?: string
+  vehicleCerts?: string
+  driverCerts?: string
+  financeType?: string
+  minAmount?: number
+  maxAmount?: number
+  termDays?: number
+  annualRate?: number
   status: number
   auditRemark?: string
   createdAt: string
@@ -279,6 +297,8 @@ export const serviceOfferApi = {
   auditWarehouse: (id: number, data: { status: number; auditRemark?: string }) => put(`/warehouse-services/${id}/audit`, data),
   listLogistics: (params: PageParams) => get<PageResult<ServiceOfferItem>>('/logistics-services', { params }),
   auditLogistics: (id: number, data: { status: number; auditRemark?: string }) => put(`/logistics-services/${id}/audit`, data),
+  listFinance: (params: PageParams) => get<PageResult<ServiceOfferItem>>('/finance-services', { params }),
+  auditFinance: (id: number, data: { status: number; auditRemark?: string }) => put(`/finance-services/${id}/audit`, data),
 }
 
 // Order API

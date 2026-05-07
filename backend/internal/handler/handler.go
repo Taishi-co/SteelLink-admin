@@ -1089,16 +1089,16 @@ func ListUsers(c *gin.Context) {
 	hasIdentityReject := userCols["identity_reject"]
 	query := `
 		SELECT id, COALESCE(username, ''), COALESCE(phone, ''), COALESCE(email, ''), status, created_at`
-		if hasEnterpriseID {
-			query += `, enterprise_id`
-		}
-		if hasIdentityStatus {
-			query += `, COALESCE(identity_status, 0)`
-		}
-		if hasIDCard {
-			query += `, COALESCE(id_card, '')`
-		}
-		if hasIDCardFrontURL {
+	if hasEnterpriseID {
+		query += `, enterprise_id`
+	}
+	if hasIdentityStatus {
+		query += `, COALESCE(identity_status, 0)`
+	}
+	if hasIDCard {
+		query += `, COALESCE(id_card, '')`
+	}
+	if hasIDCardFrontURL {
 		query += `, COALESCE(id_card_front_url, '')`
 	}
 	if hasIDCardBackURL {
@@ -1570,6 +1570,18 @@ func ListProducts(c *gin.Context) {
 		}
 	}
 	whereClause := strings.Join(whereParts, " AND ")
+	goodsTypeExpr := "'spot'"
+	if columnExists(ctx, db, "products", "goods_type") {
+		goodsTypeExpr = "COALESCE(goods_type, 'spot')"
+	}
+	warehouseServiceIDExpr := "0"
+	if columnExists(ctx, db, "products", "warehouse_service_id") {
+		warehouseServiceIDExpr = "COALESCE(warehouse_service_id, 0)"
+	}
+	warehouseEnterpriseIDExpr := "0"
+	if columnExists(ctx, db, "products", "warehouse_enterprise_id") {
+		warehouseEnterpriseIDExpr = "COALESCE(warehouse_enterprise_id, 0)"
+	}
 
 	total, err := queryCount(ctx, db, fmt.Sprintf(`SELECT COUNT(*) FROM products WHERE %s`, whereClause), args...)
 	if err != nil {
@@ -1580,6 +1592,7 @@ func ListProducts(c *gin.Context) {
 	queryArgs := append(append([]any{}, args...), limit, offset)
 	rows, err := db.QueryContext(ctx, fmt.Sprintf(`
 		SELECT id, name, enterprise_id, COALESCE(category, ''), COALESCE(sub_category, ''), COALESCE(steel_mill, ''),
+		       %s, %s, %s,
 		       spec, warehouse_info, COALESCE(bundle_no, ''), COALESCE(product_no, ''),
 		       COALESCE(unit_price, 0), COALESCE(quantity, 0), COALESCE(min_order_qty, 0),
 		       COALESCE(delivery_days, 0), COALESCE(quote_validity, 0),
@@ -1587,7 +1600,7 @@ func ListProducts(c *gin.Context) {
 		FROM products
 		WHERE %s
 		ORDER BY id DESC
-		LIMIT ? OFFSET ?`, whereClause), queryArgs...)
+		LIMIT ? OFFSET ?`, goodsTypeExpr, warehouseServiceIDExpr, warehouseEnterpriseIDExpr, whereClause), queryArgs...)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 		return
@@ -1606,6 +1619,7 @@ func ListProducts(c *gin.Context) {
 		var updatedAt sql.NullTime
 		var productNo string
 		if err := rows.Scan(&item.ID, &item.Name, &item.EnterpriseID, &item.Category, &item.SubCategory, &item.SteelMill,
+			&item.GoodsType, &item.WarehouseServiceID, &item.WarehouseEnterpriseID,
 			&rawSpec, &rawWarehouse, &item.BundleNo, &productNo,
 			&item.Price, &item.Stock, &item.MinOrderQty,
 			&item.DeliveryDays, &item.QuoteValidity,
@@ -1625,6 +1639,12 @@ func ListProducts(c *gin.Context) {
 		item.City = warehouse.City
 		item.District = warehouse.District
 		item.Address = warehouse.Address
+		if item.WarehouseServiceID == 0 {
+			item.WarehouseServiceID = warehouse.WarehouseServiceID
+		}
+		if item.WarehouseEnterpriseID == 0 {
+			item.WarehouseEnterpriseID = warehouse.WarehouseEnterpriseID
+		}
 		if auditRemark.Valid {
 			item.AuditRemark = auditRemark.String
 		}
@@ -1842,16 +1862,29 @@ func GetProduct(c *gin.Context) {
 	var auditRemark sql.NullString
 	var auditedAt sql.NullTime
 	var updatedAt sql.NullTime
+	goodsTypeExpr := "'spot'"
+	if columnExists(ctx, db, "products", "goods_type") {
+		goodsTypeExpr = "COALESCE(goods_type, 'spot')"
+	}
+	warehouseServiceIDExpr := "0"
+	if columnExists(ctx, db, "products", "warehouse_service_id") {
+		warehouseServiceIDExpr = "COALESCE(warehouse_service_id, 0)"
+	}
+	warehouseEnterpriseIDExpr := "0"
+	if columnExists(ctx, db, "products", "warehouse_enterprise_id") {
+		warehouseEnterpriseIDExpr = "COALESCE(warehouse_enterprise_id, 0)"
+	}
 
-	row := db.QueryRowContext(ctx, `
+	row := db.QueryRowContext(ctx, fmt.Sprintf(`
 		SELECT id, name, enterprise_id, COALESCE(category, ''), COALESCE(sub_category, ''), COALESCE(steel_mill, ''),
+		       %s, %s, %s,
 		       spec, warehouse_info, COALESCE(bundle_no, ''), COALESCE(product_no, ''),
 		       COALESCE(unit_price, 0), COALESCE(quantity, 0), COALESCE(min_order_qty, 0),
 		       COALESCE(delivery_days, 0), COALESCE(quote_validity, 0),
 		       COALESCE(description, ''), images, status, COALESCE(audit_remark, ''), approved_at, created_at, updated_at
 		FROM products
 		WHERE deleted_at IS NULL AND id = ?
-		LIMIT 1`, c.Param("id"))
+		LIMIT 1`, goodsTypeExpr, warehouseServiceIDExpr, warehouseEnterpriseIDExpr), c.Param("id"))
 
 	var rawSpec sql.NullString
 	var rawWarehouse sql.NullString
@@ -1863,6 +1896,9 @@ func GetProduct(c *gin.Context) {
 		&item.Category,
 		&item.SubCategory,
 		&item.SteelMill,
+		&item.GoodsType,
+		&item.WarehouseServiceID,
+		&item.WarehouseEnterpriseID,
 		&rawSpec,
 		&rawWarehouse,
 		&item.BundleNo,
@@ -1900,6 +1936,12 @@ func GetProduct(c *gin.Context) {
 	item.City = warehouse.City
 	item.District = warehouse.District
 	item.Address = warehouse.Address
+	if item.WarehouseServiceID == 0 {
+		item.WarehouseServiceID = warehouse.WarehouseServiceID
+	}
+	if item.WarehouseEnterpriseID == 0 {
+		item.WarehouseEnterpriseID = warehouse.WarehouseEnterpriseID
+	}
 	if auditRemark.Valid {
 		item.AuditRemark = auditRemark.String
 	}

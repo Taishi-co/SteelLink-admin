@@ -33,6 +33,11 @@ const marketplaceVisibilityMeta = {
   2: { color: 'red', text: '审核驳回，商城不可见' },
 } as const
 
+const goodsTypeMeta = {
+  spot: { color: 'blue', text: '现货' },
+  futures: { color: 'purple', text: '期货' },
+} as const
+
 export default function ProductList() {
   const [params, setParams] = useState<PageParams>({ page: 1, pageSize: 10 })
   const [selectedId, setSelectedId] = useState<number | null>(null)
@@ -75,6 +80,16 @@ export default function ProductList() {
   const columns: ColumnsType<ProductItem> = [
     { title: 'ID', dataIndex: 'id', key: 'id', width: 80 },
     { title: '商品名称', dataIndex: 'name', key: 'name', width: 240 },
+    {
+      title: '货品类型',
+      dataIndex: 'goodsType',
+      key: 'goodsType',
+      width: 100,
+      render: (value?: 'spot' | 'futures') => {
+        const meta = goodsTypeMeta[value || 'spot']
+        return <Tag color={meta.color}>{meta.text}</Tag>
+      },
+    },
     { title: '规格', dataIndex: 'spec', key: 'spec', width: 180 },
     { title: '单位', dataIndex: 'unit', key: 'unit', width: 90 },
     {
@@ -180,6 +195,15 @@ export default function ProductList() {
         ) : (
           <Descriptions bordered column={1} size="small">
             <Descriptions.Item label="商品名称">{detail?.name || '-'}</Descriptions.Item>
+            <Descriptions.Item label="货品类型">
+              {detail ? (
+                <Tag color={goodsTypeMeta[detail.goodsType || 'spot'].color}>
+                  {goodsTypeMeta[detail.goodsType || 'spot'].text}
+                </Tag>
+              ) : (
+                '-'
+              )}
+            </Descriptions.Item>
             <Descriptions.Item label="主品类">{detail?.category || '-'}</Descriptions.Item>
             <Descriptions.Item label="子品类">{detail?.subCategory || '-'}</Descriptions.Item>
             <Descriptions.Item label="钢厂">{detail?.steelMill || '-'}</Descriptions.Item>
@@ -194,6 +218,12 @@ export default function ProductList() {
             <Descriptions.Item label="交货周期">{detail?.deliveryDays ? `${detail.deliveryDays} 天` : '-'}</Descriptions.Item>
             <Descriptions.Item label="报价有效期">{detail?.quoteValidity ? `${detail.quoteValidity} 小时` : '-'}</Descriptions.Item>
             <Descriptions.Item label="捆包号">{detail?.bundleNo || '-'}</Descriptions.Item>
+            <Descriptions.Item label="绑定仓储资源">
+              {detail?.warehouseServiceId ? `#${detail.warehouseServiceId}` : '-'}
+            </Descriptions.Item>
+            <Descriptions.Item label="仓储方企业">
+              {detail?.warehouseEnterpriseId ? `#${detail.warehouseEnterpriseId}` : '-'}
+            </Descriptions.Item>
             <Descriptions.Item label="仓库名称">{detail?.warehouseName || '-'}</Descriptions.Item>
             <Descriptions.Item label="仓库编码">{detail?.warehouseCode || '-'}</Descriptions.Item>
             <Descriptions.Item label="仓库地区">

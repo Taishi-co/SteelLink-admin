@@ -97,6 +97,7 @@ const fallbackMenuItems: MenuProps['items'] = [
       { key: '/enterprise/services', icon: <AuditOutlined />, label: '服务权限审核' },
       { key: '/service-offers/warehouse', icon: <ContainerOutlined />, label: '仓储资源审核' },
       { key: '/service-offers/logistics', icon: <TruckOutlined />, label: '物流资源审核' },
+      { key: '/service-offers/finance', icon: <BankOutlined />, label: '金融服务审核' },
     ],
   },
   {
@@ -164,6 +165,7 @@ const pageMeta: Record<string, { title: string; description: string }> = {
   '/enterprise/services': { title: '服务权限审核', description: '审核企业销售、采购、物流、仓储和金融服务权限' },
   '/service-offers/warehouse': { title: '仓储资源审核', description: '审核仓储方上架的仓储服务资源' },
   '/service-offers/logistics': { title: '物流资源审核', description: '审核物流方上架的物流服务资源' },
+  '/service-offers/finance': { title: '金融服务审核', description: '审核资金方上架的金融服务产品' },
   '/product': { title: '商品管理', description: '商品信息与审核管理' },
   '/product/order': { title: '订单管理', description: '交易订单与履约管理' },
   '/product/category': { title: '类目配置', description: '商品类目结构管理' },

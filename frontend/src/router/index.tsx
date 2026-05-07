@@ -16,6 +16,7 @@ const EnterpriseServiceApplications = lazy(() => import('../pages/enterprise/ser
 const ProductList = lazy(() => import('../pages/product'))
 const WarehouseServiceAudit = lazy(() => import('../pages/service-offer/warehouse'))
 const LogisticsServiceAudit = lazy(() => import('../pages/service-offer/logistics'))
+const FinanceServiceAudit = lazy(() => import('../pages/service-offer/finance'))
 const OrderList = lazy(() => import('../pages/order'))
 const CategoryList = lazy(() => import('../pages/product/category'))
 const OperationLogList = lazy(() => import('../pages/log'))
@@ -120,6 +121,10 @@ const router = createBrowserRouter([
       {
         path: 'service-offers/logistics',
         element: <LogisticsServiceAudit />,
+      },
+      {
+        path: 'service-offers/finance',
+        element: <FinanceServiceAudit />,
       },
       {
         path: 'ai-procurement/config',
