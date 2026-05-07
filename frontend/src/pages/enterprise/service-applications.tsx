@@ -5,12 +5,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { enterpriseServiceApi, PageParams, ServiceApplicationItem } from '../../services/api'
 import { formatDateTime } from '../../utils/format'
 
-const serviceMeta: Record<string, { text: string; color: string }> = {
-  sales: { text: '销售服务', color: 'blue' },
-  procurement: { text: '采购服务', color: 'green' },
-  logistics: { text: '物流服务', color: 'cyan' },
-  warehouse: { text: '仓储服务', color: 'purple' },
-  finance: { text: '金融服务', color: 'gold' },
+const serviceMeta: Record<string, { text: string; color: string; kind: string }> = {
+  sales: { text: '销售交易能力', color: 'blue', kind: 'trade' },
+  procurement: { text: '采购交易能力', color: 'green', kind: 'trade' },
+  logistics: { text: '物流服务商能力', color: 'cyan', kind: 'provider' },
+  warehouse: { text: '仓储服务商能力', color: 'purple', kind: 'provider' },
+  finance: { text: '金融服务商能力', color: 'gold', kind: 'provider' },
 }
 
 const enterpriseRoleMeta: Record<string, string> = {
@@ -60,10 +60,18 @@ export default function EnterpriseServiceApplications() {
     { title: '企业', dataIndex: 'enterpriseName', width: 220, render: (v, r) => v || r.enterpriseCode },
     { title: '企业代码', dataIndex: 'enterpriseCode', width: 150 },
     {
-      title: '平台服务',
+      title: '平台能力',
       dataIndex: 'service',
       width: 120,
-      render: (value: string) => <Tag color={serviceMeta[value]?.color}>{serviceMeta[value]?.text || value}</Tag>,
+      render: (value: string) => {
+        const meta = serviceMeta[value]
+        return meta ? (
+          <Space direction="vertical" size={0}>
+            <Tag color={meta.color}>{meta.text}</Tag>
+            <span style={{ fontSize: 11, color: '#999' }}>{meta.kind === 'trade' ? '交易能力' : '服务商能力'}</span>
+          </Space>
+        ) : <Tag>{value}</Tag>
+      },
     },
     {
       title: '供应链角色',

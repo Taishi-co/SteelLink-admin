@@ -21,6 +21,17 @@ const orderStatusMeta: Record<number, { color: string; text: string }> = {
   9: { color: 'red', text: '已取消' },
   10: { color: 'volcano', text: '已冻结' },
   11: { color: 'magenta', text: '异常' },
+  12: { color: 'purple', text: '待仓库确认' },
+  13: { color: 'orange', text: '待卖方确认' },
+  14: { color: 'blue', text: '待买方确认' },
+  15: { color: 'cyan', text: '物流竞价中' },
+  16: { color: 'gold', text: '待确认物流' },
+  17: { color: 'processing', text: '运输中' },
+  18: { color: 'green', text: '已收货' },
+  19: { color: 'success', text: '已对账' },
+  20: { color: 'default', text: '已归档' },
+  21: { color: 'purple', text: '融资审批中' },
+  22: { color: 'gold', text: '待签署融资合同' },
 }
 
 function timelineColor(status: string) {
@@ -32,15 +43,24 @@ function timelineColor(status: string) {
 
 const statusOptions = [
   { label: '全部状态', value: '' },
-  { label: '待确认', value: '1' },
+  { label: '待仓库确认', value: '12' },
+  { label: '待卖方确认', value: '13' },
+  { label: '待买方确认', value: '14' },
   { label: '待签合同', value: '2' },
   { label: '待支付', value: '3' },
+  { label: '融资审批中', value: '21' },
+  { label: '待签署融资合同', value: '22' },
   { label: '已支付', value: '4' },
-  { label: '待提货', value: '5' },
-  { label: '配送中', value: '6' },
+  { label: '物流竞价中', value: '15' },
+  { label: '待确认物流', value: '16' },
+  { label: '运输中', value: '17' },
   { label: '已送达', value: '7' },
+  { label: '已收货', value: '18' },
+  { label: '已对账', value: '19' },
+  { label: '已归档', value: '20' },
   { label: '已完成', value: '8' },
   { label: '已取消', value: '9' },
+  { label: '异常', value: '11' },
 ]
 
 export default function OrderList() {
@@ -216,6 +236,25 @@ export default function OrderList() {
                     ),
                   }))}
                 />
+              </div>
+            )}
+
+            {selectedOrder.status >= 12 && (
+              <div style={{ marginTop: 24 }}>
+                <Typography.Text strong style={{ fontSize: 14 }}>交易履约说明</Typography.Text>
+                <div style={{ marginTop: 8, color: '#666', fontSize: 13, lineHeight: 1.8 }}>
+                  {selectedOrder.status === 12 && '订单已进入仓库确认阶段，仓储方需核验仓库条件并反馈。'}
+                  {selectedOrder.status === 13 && '仓储方已确认仓库条件，等待卖方确认价格、数量和交付条款。'}
+                  {selectedOrder.status === 14 && '卖方已确认条款，等待买方最终确认订单。'}
+                  {(selectedOrder.status === 21) && '买方已申请托盘融资，资金方正在进行风控审批。'}
+                  {(selectedOrder.status === 22) && '融资已审批通过，等待买方签署债务合同并支付手续费。'}
+                  {selectedOrder.status === 15 && '卖方已发起物流竞价，等待物流方报价。'}
+                  {selectedOrder.status === 16 && '物流方已报价，等待买卖双方确认同一物流资源。'}
+                  {selectedOrder.status === 17 && '物流资源已锁定，运输任务进行中。'}
+                  {selectedOrder.status === 18 && '买方已确认收货，等待卖方对账确认。'}
+                  {selectedOrder.status === 19 && '卖方已完成对账确认，等待归档。'}
+                  {selectedOrder.status === 20 && '订单已归档，交易履约流程完成。'}
+                </div>
               </div>
             )}
           </>
