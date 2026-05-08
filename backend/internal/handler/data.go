@@ -168,13 +168,15 @@ type orderTimelineItem struct {
 }
 
 type categoryItem struct {
-	ID       int64  `json:"id"`
-	ParentID int64  `json:"parentId"`
-	Name     string `json:"name"`
-	Code     string `json:"code,omitempty"`
-	Icon     string `json:"icon,omitempty"`
-	Sort     int    `json:"sort"`
-	Status   int    `json:"status"`
+	ID          int64  `json:"id"`
+	ParentID    int64  `json:"parentId"`
+	Name        string `json:"name"`
+	DisplayName string `json:"displayName,omitempty"`
+	Code        string `json:"code,omitempty"`
+	Icon        string `json:"icon,omitempty"`
+	ImageURL    string `json:"imageUrl,omitempty"`
+	Sort        int    `json:"sort"`
+	Status      int    `json:"status"`
 }
 
 type roleUpsertRequest struct {
@@ -611,6 +613,8 @@ func AutoMigrate(db *sql.DB) {
 			(9, '类目配置', '/product/category', 'AppstoreOutlined', 1, 'product:category', 1, 2)`)
 	}
 
+	ensureProductCategoriesTable(ctx, db)
+
 	if !tableExists(ctx, db, "admin_role_menus") {
 		db.ExecContext(ctx, `CREATE TABLE admin_role_menus (
 			id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -622,6 +626,44 @@ func AutoMigrate(db *sql.DB) {
 
 		db.ExecContext(ctx, `INSERT INTO admin_role_menus (role_id, menu_id)
 			SELECT 1, id FROM admin_menus WHERE deleted_at IS NULL`)
+	}
+}
+
+func ensureProductCategoriesTable(ctx context.Context, db *sql.DB) {
+	if !tableExists(ctx, db, "product_categories") {
+		db.ExecContext(ctx, `CREATE TABLE product_categories (
+			id BIGINT AUTO_INCREMENT PRIMARY KEY,
+			parent_id BIGINT DEFAULT 0,
+			name VARCHAR(80) NOT NULL,
+			display_name VARCHAR(80) NOT NULL DEFAULT '',
+			code VARCHAR(80) DEFAULT '',
+			icon VARCHAR(64) DEFAULT '',
+			image_url VARCHAR(512) DEFAULT '',
+			sort INT DEFAULT 0,
+			status TINYINT DEFAULT 1,
+			created_by BIGINT DEFAULT 0,
+			updated_by BIGINT DEFAULT 0,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			deleted_at DATETIME DEFAULT NULL,
+			UNIQUE KEY uk_product_categories_name (name),
+			KEY idx_product_categories_status (status),
+			KEY idx_product_categories_sort (sort),
+			KEY idx_product_categories_deleted_at (deleted_at)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`)
+		return
+	}
+	if !columnExists(ctx, db, "product_categories", "display_name") {
+		db.ExecContext(ctx, `ALTER TABLE product_categories ADD COLUMN display_name VARCHAR(80) NOT NULL DEFAULT ''`)
+	}
+	if !columnExists(ctx, db, "product_categories", "image_url") {
+		db.ExecContext(ctx, `ALTER TABLE product_categories ADD COLUMN image_url VARCHAR(512) DEFAULT ''`)
+	}
+	if !columnExists(ctx, db, "product_categories", "created_by") {
+		db.ExecContext(ctx, `ALTER TABLE product_categories ADD COLUMN created_by BIGINT DEFAULT 0`)
+	}
+	if !columnExists(ctx, db, "product_categories", "updated_by") {
+		db.ExecContext(ctx, `ALTER TABLE product_categories ADD COLUMN updated_by BIGINT DEFAULT 0`)
 	}
 }
 

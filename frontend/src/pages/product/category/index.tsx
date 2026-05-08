@@ -7,7 +7,10 @@ import { categoryApi, CategoryItem } from '../../../services/api'
 
 interface CategoryFormValues {
   name: string
+  displayName: string
   code: string
+  icon: string
+  imageUrl: string
   sort: number
   status: number
 }
@@ -40,11 +43,19 @@ export default function CategoryList() {
 
   const closeModal = () => { setModalOpen(false); setEditingItem(null); form.resetFields() }
 
-  const openCreate = () => { setEditingItem(null); form.setFieldsValue({ status: 1, sort: 0 }); setModalOpen(true) }
+  const openCreate = () => { setEditingItem(null); form.setFieldsValue({ displayName: '', code: '', icon: '', imageUrl: '', status: 1, sort: 0 }); setModalOpen(true) }
 
   const openEdit = (record: CategoryItem) => {
     setEditingItem(record)
-    form.setFieldsValue({ name: record.name, code: record.code || '', sort: record.sort, status: record.status })
+    form.setFieldsValue({
+      name: record.name,
+      displayName: record.displayName || record.name,
+      code: record.code || '',
+      icon: record.icon || '',
+      imageUrl: record.imageUrl || '',
+      sort: record.sort,
+      status: record.status,
+    })
     setModalOpen(true)
   }
 
@@ -55,8 +66,13 @@ export default function CategoryList() {
 
   const columns: ColumnsType<CategoryItem> = [
     { title: 'ID', dataIndex: 'id', key: 'id', width: 60 },
-    { title: '类目名称', dataIndex: 'name', key: 'name' },
+    { title: '业务品类', dataIndex: 'name', key: 'name' },
+    { title: '展示名', dataIndex: 'displayName', key: 'displayName', render: (_, record) => record.displayName || record.name },
     { title: '编码', dataIndex: 'code', key: 'code' },
+    {
+      title: '导航图片', dataIndex: 'imageUrl', key: 'imageUrl', width: 120,
+      render: (imageUrl: string | undefined) => imageUrl ? <img src={imageUrl} alt="品类导航" style={{ width: 56, height: 36, objectFit: 'cover', borderRadius: 4 }} /> : '-',
+    },
     {
       title: '状态', dataIndex: 'status', key: 'status', width: 80,
       render: (status: number) => <Tag color={status === 1 ? 'green' : 'red'}>{status === 1 ? '启用' : '停用'}</Tag>,
@@ -97,11 +113,20 @@ export default function CategoryList() {
         destroyOnHidden
       >
         <Form form={form} layout="vertical">
-          <Form.Item label="类目名称" name="name" rules={[{ required: true, message: '请输入类目名称' }]}>
+          <Form.Item label="业务品类" name="name" rules={[{ required: true, message: '请输入业务品类' }]}>
             <Input placeholder="如：热轧卷板" />
+          </Form.Item>
+          <Form.Item label="展示名" name="displayName">
+            <Input placeholder="如：热轧板卷专区；为空时使用业务品类" />
           </Form.Item>
           <Form.Item label="编码" name="code">
             <Input placeholder="如：hot_rolled_coil" />
+          </Form.Item>
+          <Form.Item label="导航图标" name="icon">
+            <Input placeholder="如：钢；无图片时作为文本图标展示" />
+          </Form.Item>
+          <Form.Item label="导航图片 URL" name="imageUrl">
+            <Input placeholder="https://..." />
           </Form.Item>
           <Form.Item label="排序" name="sort">
             <InputNumber min={0} style={{ width: '100%' }} />

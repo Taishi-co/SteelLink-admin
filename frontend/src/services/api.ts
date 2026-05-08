@@ -449,8 +449,10 @@ export interface CategoryItem {
   id: number
   parentId: number
   name: string
+  displayName?: string
   code?: string
   icon?: string
+  imageUrl?: string
   sort: number
   status: number
   children?: CategoryItem[]
