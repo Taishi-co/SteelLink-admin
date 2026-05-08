@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Card, Table, Tag, Button, Space, Input, Drawer, Descriptions, Popconfirm, message, Modal, Form, Image, Divider, Alert } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { userApi, UserItem, PageParams } from '../../services/api'
+import { fileApi, userApi, UserItem, PageParams } from '../../services/api'
 import { formatDateTime } from '../../utils/format'
 import { SearchOutlined, EyeOutlined, CheckCircleOutlined, CloseCircleOutlined, IdcardOutlined } from '@ant-design/icons'
 
@@ -26,6 +26,29 @@ export default function UserList() {
   const { data, isLoading } = useQuery({
     queryKey: ['users', queryParams],
     queryFn: () => userApi.list(queryParams),
+  })
+
+  const { data: signedIdentityImages } = useQuery({
+    queryKey: ['identity-images', selectedUser?.id, selectedUser?.idCardFrontUrl, selectedUser?.idCardBackUrl],
+    enabled: Boolean(selectedUser?.id && (selectedUser.idCardFrontUrl || selectedUser.idCardBackUrl)),
+    staleTime: 5 * 60 * 1000,
+    queryFn: async () => {
+      const entries = await Promise.all(
+        [
+          ['front', selectedUser?.idCardFrontUrl],
+          ['back', selectedUser?.idCardBackUrl],
+        ].map(async ([side, url]) => {
+          if (!url) return [side, ''] as const
+          try {
+            const response = await fileApi.getPrivateUrl(url)
+            return [side, response.data.data.url] as const
+          } catch {
+            return [side, url] as const
+          }
+        })
+      )
+      return Object.fromEntries(entries) as { front?: string; back?: string }
+    },
   })
 
   const { mutate: toggleStatus } = useMutation({
@@ -225,7 +248,7 @@ export default function UserList() {
                       {selectedUser.idCardFrontUrl && (
                         <div className="text-center">
                           <Image
-                            src={selectedUser.idCardFrontUrl}
+                            src={signedIdentityImages?.front || selectedUser.idCardFrontUrl}
                             alt="身份证正面"
                             width={200}
                             className="rounded border object-cover"
@@ -237,7 +260,7 @@ export default function UserList() {
                       {selectedUser.idCardBackUrl && (
                         <div className="text-center">
                           <Image
-                            src={selectedUser.idCardBackUrl}
+                            src={signedIdentityImages?.back || selectedUser.idCardBackUrl}
                             alt="身份证背面"
                             width={200}
                             className="rounded border object-cover"

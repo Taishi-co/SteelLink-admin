@@ -380,6 +380,15 @@ export const operationLogApi = {
   list: (params: OperationLogParams) => get<PageResult<OperationLogItem>>('/operation-logs', { params }),
 }
 
+export interface PrivateFileURLResult {
+  url: string
+  expiresIn: number
+}
+
+export const fileApi = {
+  getPrivateUrl: (url: string) => get<PrivateFileURLResult>('/files/private-url', { params: { url } }),
+}
+
 export interface AIProcurementStageConfig {
   code: string
   name: string
