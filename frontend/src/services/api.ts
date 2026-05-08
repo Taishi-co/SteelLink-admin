@@ -303,6 +303,7 @@ export const serviceOfferApi = {
 
 // Order API
 export interface OrderItem {
+  [key: string]: unknown
   id: number
   orderNo: string
   buyerId: number
@@ -321,6 +322,18 @@ export interface OrderItem {
   expiresAt?: string
   createdAt: string
   timeline?: OrderTimelineItem[]
+  remark?: Record<string, unknown>
+  financingInfo?: FinancingRequestInfo
+  financing_info?: FinancingRequestInfo
+  logisticsBidding?: LogisticsBiddingInfo
+  logistics_bidding?: LogisticsBiddingInfo
+  logisticsQuotes?: LogisticsQuoteInfo[]
+  logistics_quotes?: LogisticsQuoteInfo[]
+  shipmentTask?: ShipmentTaskInfo
+  shipment_task?: ShipmentTaskInfo
+  pledgeEvents?: PledgeEventInfo[]
+  pledge_events?: PledgeEventInfo[]
+  events?: OrderEventItem[]
 }
 
 export interface OrderTimelineItem {
@@ -331,8 +344,104 @@ export interface OrderTimelineItem {
   description?: string
 }
 
+export interface FinancingRequestInfo {
+  [key: string]: unknown
+  id: number
+  status: string
+  risk_result?: string
+  riskRemark?: string
+  risk_remark?: string
+  approved_amount?: number
+  approvedAmount?: number
+  requested_amount?: number
+  requestedAmount?: number
+  funding_enterprise_id?: number
+  fundingEnterpriseId?: number
+  disbursement_voucher?: string
+  disbursementVoucher?: string
+  pledge_voucher_url?: string
+  pledgeVoucherUrl?: string
+  commission_voucher?: string
+  commissionVoucher?: string
+  debt_contract_url?: string
+  debtContractUrl?: string
+}
+
+export interface LogisticsBiddingInfo {
+  [key: string]: unknown
+  id: number
+  status: string
+  freight_payer?: string
+  freightPayer?: string
+  selected_quote_id?: number
+  selectedQuoteId?: number
+}
+
+export interface LogisticsQuoteInfo {
+  [key: string]: unknown
+  id: number
+  logistics_name?: string
+  logisticsName?: string
+  logistics_enterprise_id?: number
+  logisticsEnterpriseId?: number
+  amount: number
+  vehicle_info?: string
+  vehicleInfo?: string
+  driver_info?: string
+  driverInfo?: string
+  estimated_delivery_at?: string
+  estimatedDeliveryAt?: string
+  remark?: string
+}
+
+export interface ShipmentTaskInfo {
+  [key: string]: unknown
+  id: number
+  status: string
+  logistics_enterprise_id?: number
+  logisticsEnterpriseId?: number
+  logistics_quote_id?: number
+  logisticsQuoteId?: number
+  pickup_voucher?: string
+  pickupVoucher?: string
+  delivery_voucher?: string
+  deliveryVoucher?: string
+  signature_voucher?: string
+  signatureVoucher?: string
+}
+
+export interface PledgeEventInfo {
+  [key: string]: unknown
+  id: number
+  event_type?: string
+  eventType?: string
+  voucher_url?: string
+  voucherUrl?: string
+  reason?: string
+  condition?: string
+  created_at?: string
+  createdAt?: string
+}
+
+export interface OrderEventItem {
+  [key: string]: unknown
+  id: number
+  event_type?: string
+  eventType?: string
+  actor_service?: string
+  actorService?: string
+  from_status?: number
+  fromStatus?: number
+  to_status?: number
+  toStatus?: number
+  payload?: Record<string, unknown>
+  created_at?: string
+  createdAt?: string
+}
+
 export const orderApi = {
   list: (params: PageParams) => get<PageResult<OrderItem>>('/orders', { params }),
+  detail: (id: number) => get<OrderItem>(`/orders/${id}`),
 }
 
 // Product Category API
