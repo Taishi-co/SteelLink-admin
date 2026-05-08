@@ -2217,7 +2217,7 @@ func ListProductCategories(c *gin.Context) {
 
 	if db != nil && tableExists(ctx, db, "product_categories") {
 		rows, err := db.QueryContext(ctx, `
-			SELECT id, COALESCE(parent_id, 0), name, COALESCE(code, ''), COALESCE(icon, ''), COALESCE(sort, 0), COALESCE(status, 1)
+			SELECT id, COALESCE(parent_id, 0), name, COALESCE(display_name, ''), COALESCE(code, ''), COALESCE(icon, ''), COALESCE(image_url, ''), COALESCE(sort, 0), COALESCE(status, 1)
 			FROM product_categories
 			WHERE deleted_at IS NULL
 			ORDER BY sort ASC, id ASC`)
@@ -2229,7 +2229,7 @@ func ListProductCategories(c *gin.Context) {
 		items := make([]categoryItem, 0)
 		for rows.Next() {
 			var item categoryItem
-			if err := rows.Scan(&item.ID, &item.ParentID, &item.Name, &item.Code, &item.Icon, &item.Sort, &item.Status); err != nil {
+			if err := rows.Scan(&item.ID, &item.ParentID, &item.Name, &item.DisplayName, &item.Code, &item.Icon, &item.ImageURL, &item.Sort, &item.Status); err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 				return
 			}
@@ -2249,10 +2249,13 @@ func ListProductCategories(c *gin.Context) {
 // CreateProductCategory creates a new product category
 func CreateProductCategory(c *gin.Context) {
 	var req struct {
-		Name   string `json:"name" binding:"required"`
-		Code   string `json:"code"`
-		Sort   int    `json:"sort"`
-		Status int    `json:"status"`
+		Name        string `json:"name" binding:"required"`
+		DisplayName string `json:"displayName"`
+		Code        string `json:"code"`
+		Icon        string `json:"icon"`
+		ImageURL    string `json:"imageUrl"`
+		Sort        int    `json:"sort"`
+		Status      int    `json:"status"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid payload"})
@@ -2265,22 +2268,28 @@ func CreateProductCategory(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"code": 503, "message": "database unavailable"})
 		return
 	}
-	result, err := db.ExecContext(ctx, `INSERT INTO product_categories (name, code, sort, status) VALUES (?, ?, ?, ?)`, req.Name, req.Code, req.Sort, req.Status)
+	if req.DisplayName == "" {
+		req.DisplayName = req.Name
+	}
+	result, err := db.ExecContext(ctx, `INSERT INTO product_categories (name, display_name, code, icon, image_url, sort, status) VALUES (?, ?, ?, ?, ?, ?, ?)`, req.Name, req.DisplayName, req.Code, req.Icon, req.ImageURL, req.Sort, req.Status)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 		return
 	}
 	id, _ := result.LastInsertId()
-	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": categoryItem{ID: id, Name: req.Name, Code: req.Code, Sort: req.Sort, Status: req.Status}})
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": categoryItem{ID: id, Name: req.Name, DisplayName: req.DisplayName, Code: req.Code, Icon: req.Icon, ImageURL: req.ImageURL, Sort: req.Sort, Status: req.Status}})
 }
 
 // UpdateProductCategory updates a product category
 func UpdateProductCategory(c *gin.Context) {
 	var req struct {
-		Name   string `json:"name" binding:"required"`
-		Code   string `json:"code"`
-		Sort   int    `json:"sort"`
-		Status int    `json:"status"`
+		Name        string `json:"name" binding:"required"`
+		DisplayName string `json:"displayName"`
+		Code        string `json:"code"`
+		Icon        string `json:"icon"`
+		ImageURL    string `json:"imageUrl"`
+		Sort        int    `json:"sort"`
+		Status      int    `json:"status"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid payload"})
@@ -2293,7 +2302,10 @@ func UpdateProductCategory(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"code": 503, "message": "database unavailable"})
 		return
 	}
-	result, err := db.ExecContext(ctx, `UPDATE product_categories SET name=?, code=?, sort=?, status=? WHERE id=? AND deleted_at IS NULL`, req.Name, req.Code, req.Sort, req.Status, c.Param("id"))
+	if req.DisplayName == "" {
+		req.DisplayName = req.Name
+	}
+	result, err := db.ExecContext(ctx, `UPDATE product_categories SET name=?, display_name=?, code=?, icon=?, image_url=?, sort=?, status=? WHERE id=? AND deleted_at IS NULL`, req.Name, req.DisplayName, req.Code, req.Icon, req.ImageURL, req.Sort, req.Status, c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 		return
