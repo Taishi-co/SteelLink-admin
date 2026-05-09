@@ -92,7 +92,7 @@ func GetDashboardStats(c *gin.Context) {
 	}
 
 	pendingEnterprises, _ := queryCount(ctx, db, `SELECT COUNT(*) FROM enterprises WHERE deleted_at IS NULL AND status = 0`)
-	pendingProducts, _ := queryCount(ctx, db, `SELECT COUNT(*) FROM products WHERE deleted_at IS NULL AND status IN ('draft', 'pending_review', '0')`)
+	pendingProducts, _ := queryCount(ctx, db, `SELECT COUNT(*) FROM products WHERE deleted_at IS NULL AND status IN ('pending_review', '1')`)
 	pendingOrders, _ := queryCount(ctx, db, `SELECT COUNT(*) FROM orders WHERE deleted_at IS NULL AND status IN ('pending_contract', 'pending_payment', 'pending_payment_audit', 'pending_pickup')`)
 	stats.PendingAudits = pendingEnterprises + pendingProducts + pendingOrders
 
@@ -1557,15 +1557,9 @@ func ListProducts(c *gin.Context) {
 		statusValue, err := strconv.Atoi(status)
 		if err == nil {
 			switch statusValue {
-			case 0:
-				whereParts = append(whereParts, "status IN (?, ?)")
-				args = append(args, 0, 1)
-			case 1:
+			case 0, 1, 2, 3, 4:
 				whereParts = append(whereParts, "status = ?")
-				args = append(args, 2)
-			case 2:
-				whereParts = append(whereParts, "status = ?")
-				args = append(args, 4)
+				args = append(args, statusValue)
 			}
 		}
 	}
