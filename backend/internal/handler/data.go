@@ -168,15 +168,16 @@ type orderTimelineItem struct {
 }
 
 type categoryItem struct {
-	ID          int64  `json:"id"`
-	ParentID    int64  `json:"parentId"`
-	Name        string `json:"name"`
-	DisplayName string `json:"displayName,omitempty"`
-	Code        string `json:"code,omitempty"`
-	Icon        string `json:"icon,omitempty"`
-	ImageURL    string `json:"imageUrl,omitempty"`
-	Sort        int    `json:"sort"`
-	Status      int    `json:"status"`
+	ID           int64  `json:"id"`
+	ParentID     int64  `json:"parentId"`
+	Name         string `json:"name"`
+	DisplayName  string `json:"displayName,omitempty"`
+	Code         string `json:"code,omitempty"`
+	Icon         string `json:"icon,omitempty"`
+	ImageURL     string `json:"imageUrl,omitempty"`
+	Sort         int    `json:"sort"`
+	Status       int    `json:"status"`
+	ProductCount int    `json:"productCount"`
 }
 
 type roleUpsertRequest struct {

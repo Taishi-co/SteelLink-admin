@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Card, Table, Tag, Button, Space, Popconfirm, message, Modal, Form, Input, InputNumber, Select, Upload } from 'antd'
+import { Card, Table, Tag, Button, Space, Popconfirm, message, Modal, Form, Input, InputNumber, Select, Upload, Tooltip } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined, UploadOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import type { UploadProps } from 'antd'
@@ -40,6 +40,7 @@ export default function CategoryList() {
   const { mutate: deleteCategory } = useMutation({
     mutationFn: categoryApi.delete,
     onSuccess: () => { message.success('删除成功'); void queryClient.invalidateQueries({ queryKey: ['categories'] }) },
+    onError: () => message.error('删除失败，请确认该类目下没有关联商品'),
   })
 
   const closeModal = () => { setModalOpen(false); setEditingItem(null); form.resetFields() }
@@ -103,17 +104,43 @@ export default function CategoryList() {
       title: '状态', dataIndex: 'status', key: 'status', width: 80,
       render: (status: number) => <Tag color={status === 1 ? 'green' : 'red'}>{status === 1 ? '启用' : '停用'}</Tag>,
     },
+    {
+      title: '商品数量',
+      dataIndex: 'productCount',
+      key: 'productCount',
+      width: 100,
+      render: (count: number | undefined) => {
+        const value = count || 0
+        return <Tag color={value > 0 ? 'blue' : 'default'}>{value} 个</Tag>
+      },
+    },
     { title: '排序', dataIndex: 'sort', key: 'sort', width: 60 },
     {
       title: '操作', key: 'actions', width: 150,
-      render: (_, record) => (
-        <Space>
-          <Button type="link" icon={<EditOutlined />} size="small" onClick={() => openEdit(record)}>编辑</Button>
-          <Popconfirm title="确认删除该类目？" onConfirm={() => deleteCategory(record.id)}>
-            <Button type="link" danger icon={<DeleteOutlined />} size="small">删除</Button>
-          </Popconfirm>
-        </Space>
-      ),
+      render: (_, record) => {
+        const productCount = record.productCount || 0
+        const deleteButton = (
+          <Button type="link" danger icon={<DeleteOutlined />} size="small" disabled={productCount > 0}>删除</Button>
+        )
+        return (
+          <Space>
+            <Button type="link" icon={<EditOutlined />} size="small" onClick={() => openEdit(record)}>编辑</Button>
+            {productCount > 0 ? (
+              <Tooltip title={`该类目下还有 ${productCount} 个商品，不能删除`}>
+                <span>{deleteButton}</span>
+              </Tooltip>
+            ) : (
+              <Popconfirm
+                title="确认删除该类目？"
+                description="该类目当前没有关联商品，删除后不可恢复。"
+                onConfirm={() => deleteCategory(record.id)}
+              >
+                {deleteButton}
+              </Popconfirm>
+            )}
+          </Space>
+        )
+      },
     },
   ]
 
