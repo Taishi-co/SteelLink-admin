@@ -1,13 +1,17 @@
 import { useState } from 'react'
 import {
+  Alert,
   Button,
   Card,
+  Col,
   Descriptions,
   Drawer,
   Form,
   Image,
   Input,
+  InputNumber,
   Modal,
+  Row,
   Segmented,
   Select,
   Skeleton,
@@ -42,7 +46,74 @@ const goodsTypeMeta = {
   futures: { color: 'purple', text: '期货' },
 } as const
 
+interface ProductFilterValues {
+  keyword?: string
+  status?: number
+  enterpriseId?: number
+  category?: string
+  subCategory?: string
+  goodsType?: string
+  warehouseServiceId?: number
+}
+
+interface CompareRow {
+  key: string
+  group: string
+  label: string
+  submitted: string
+  baseline: string
+  changed: boolean
+}
+
+const pendingReviewStatuses = new Set([0, 1, 4])
+
+function textValue(value: unknown) {
+  if (value === null || value === undefined || value === '') return '-'
+  return String(value)
+}
+
+function moneyValue(value: unknown) {
+  const amount = Number(value || 0)
+  return amount > 0 ? `¥${amount.toFixed(2)}` : '-'
+}
+
+function numberValue(value: unknown, suffix = '') {
+  const amount = Number(value || 0)
+  return amount > 0 ? `${amount}${suffix}` : '-'
+}
+
+function productCompareRows(product?: ProductItem): CompareRow[] {
+  if (!product) return []
+  const rows: Omit<CompareRow, 'baseline' | 'changed'>[] = [
+    { key: 'name', group: '基础信息', label: '商品名称', submitted: textValue(product.name) },
+    { key: 'goodsType', group: '基础信息', label: '货品类型', submitted: goodsTypeMeta[(product.goodsType || 'spot') as keyof typeof goodsTypeMeta]?.text || textValue(product.goodsType) },
+    { key: 'category', group: '基础信息', label: '主品类', submitted: textValue(product.category) },
+    { key: 'subCategory', group: '基础信息', label: '子品类', submitted: textValue(product.subCategory) },
+    { key: 'steelMill', group: '基础信息', label: '钢厂', submitted: textValue(product.steelMill) },
+    { key: 'spec', group: '规格价格', label: '规格', submitted: textValue(product.spec) },
+    { key: 'material', group: '规格价格', label: '材质', submitted: textValue(product.material) },
+    { key: 'bundleNo', group: '规格价格', label: '捆包号', submitted: textValue(product.bundleNo) },
+    { key: 'price', group: '规格价格', label: '单价', submitted: moneyValue(product.price) },
+    { key: 'stock', group: '规格价格', label: '库存', submitted: numberValue(product.stock) },
+    { key: 'minOrderQty', group: '规格价格', label: '最小起订量', submitted: numberValue(product.minOrderQty) },
+    { key: 'deliveryDays', group: '履约信息', label: '交货周期', submitted: numberValue(product.deliveryDays, ' 天') },
+    { key: 'quoteValidity', group: '履约信息', label: '报价有效期', submitted: numberValue(product.quoteValidity, ' 小时') },
+    { key: 'warehouseServiceId', group: '仓储信息', label: '仓储资源', submitted: product.warehouseServiceId ? `#${product.warehouseServiceId}` : '-' },
+    { key: 'warehouseName', group: '仓储信息', label: '仓库名称', submitted: textValue(product.warehouseName) },
+    { key: 'warehouseCode', group: '仓储信息', label: '仓库编码', submitted: textValue(product.warehouseCode) },
+    { key: 'warehouseRegion', group: '仓储信息', label: '仓库地区', submitted: [product.province, product.city, product.district].filter(Boolean).join(' / ') || '-' },
+    { key: 'address', group: '仓储信息', label: '仓库地址', submitted: textValue(product.address) },
+    { key: 'description', group: '其他', label: '商品描述', submitted: textValue(product.description) },
+  ]
+  return rows.map((row) => ({
+    ...row,
+    baseline: '暂无历史快照',
+    changed: pendingReviewStatuses.has(product.status),
+  }))
+}
+
 export default function ProductList() {
+  const [filterForm] = Form.useForm<ProductFilterValues>()
   const [params, setParams] = useState<PageParams>({ page: 1, pageSize: 10 })
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [auditTarget, setAuditTarget] = useState<ProductItem | null>(null)
@@ -62,6 +133,8 @@ export default function ProductList() {
 
   const rows = data?.data.data.list ?? []
   const detail = detailData?.data.data
+  const detailCompareRows = productCompareRows(detail)
+  const auditCompareRows = productCompareRows(auditTarget || undefined)
 
   const { mutate: auditProduct, isPending: auditSubmitting } = useMutation({
     mutationFn: ({ id, values }: { id: number; values: { status: number; auditRemark?: string } }) =>
@@ -155,25 +228,105 @@ export default function ProductList() {
     },
   ]
 
+  const compareColumns: ColumnsType<CompareRow> = [
+    { title: '分组', dataIndex: 'group', key: 'group', width: 96 },
+    { title: '字段', dataIndex: 'label', key: 'label', width: 120 },
+    { title: '当前提交值', dataIndex: 'submitted', key: 'submitted', ellipsis: true },
+    {
+      title: '审核基准',
+      dataIndex: 'baseline',
+      key: 'baseline',
+      width: 130,
+      render: (value: string) => <Tag>{value}</Tag>,
+    },
+    {
+      title: '判断',
+      key: 'changed',
+      width: 100,
+      render: (_: unknown, record: CompareRow) => record.changed ? <Tag color="gold">待核对</Tag> : <Tag color="green">已审核</Tag>,
+    },
+  ]
+
+  const applyFilters = (values: ProductFilterValues) => {
+    setParams({
+      page: 1,
+      pageSize: params.pageSize,
+      ...values,
+    })
+  }
+
+  const resetFilters = () => {
+    filterForm.resetFields()
+    setParams({ page: 1, pageSize: params.pageSize })
+  }
+
   return (
     <>
       <Card title="商品管理">
-        <Space className="mb-4" wrap>
-          <Select
-            value={params.status}
-            placeholder="筛选审核状态"
-            allowClear
-            style={{ width: 180 }}
-            onChange={(status) => setParams({ ...params, page: 1, status })}
-            options={[
-              { label: '草稿', value: 0 },
-              { label: '待审核', value: 1 },
-              { label: '已上架', value: 2 },
-              { label: '已下架', value: 3 },
-              { label: '审核拒绝', value: 4 },
-            ]}
-          />
-        </Space>
+        <Form form={filterForm} layout="vertical" onFinish={applyFilters} initialValues={params} className="mb-4">
+          <Row gutter={12}>
+            <Col xs={24} md={8} lg={6}>
+              <Form.Item name="keyword" label="搜索">
+                <Input allowClear placeholder="商品名/品类/钢厂/规格/仓库" />
+              </Form.Item>
+            </Col>
+            <Col xs={12} md={8} lg={4}>
+              <Form.Item name="status" label="审核状态">
+                <Select
+                  allowClear
+                  placeholder="全部状态"
+                  options={[
+                    { label: '草稿', value: 0 },
+                    { label: '待审核', value: 1 },
+                    { label: '已上架', value: 2 },
+                    { label: '已下架', value: 3 },
+                    { label: '审核拒绝', value: 4 },
+                  ]}
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={12} md={8} lg={4}>
+              <Form.Item name="goodsType" label="货品类型">
+                <Select
+                  allowClear
+                  placeholder="全部类型"
+                  options={[
+                    { label: '现货', value: 'spot' },
+                    { label: '期货', value: 'futures' },
+                  ]}
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={12} md={8} lg={4}>
+              <Form.Item name="enterpriseId" label="企业 ID">
+                <InputNumber min={1} precision={0} style={{ width: '100%' }} placeholder="企业 ID" />
+              </Form.Item>
+            </Col>
+            <Col xs={12} md={8} lg={4}>
+              <Form.Item name="warehouseServiceId" label="仓储资源 ID">
+                <InputNumber min={1} precision={0} style={{ width: '100%' }} placeholder="仓库 ID" />
+              </Form.Item>
+            </Col>
+            <Col xs={12} md={8} lg={4}>
+              <Form.Item name="category" label="主品类">
+                <Input allowClear placeholder="如 热轧板卷" />
+              </Form.Item>
+            </Col>
+            <Col xs={12} md={8} lg={4}>
+              <Form.Item name="subCategory" label="子品类">
+                <Input allowClear placeholder="子品类" />
+              </Form.Item>
+            </Col>
+            <Col xs={24} lg={6}>
+              <Form.Item label="操作">
+                <Space wrap>
+                  <Button type="primary" htmlType="submit">查询</Button>
+                  <Button onClick={resetFilters}>重置</Button>
+                </Space>
+              </Form.Item>
+            </Col>
+          </Row>
+        </Form>
         <Table
           columns={columns}
           dataSource={rows}
@@ -199,84 +352,63 @@ export default function ProductList() {
         {detailLoading ? (
           <Skeleton active paragraph={{ rows: 10 }} />
         ) : (
-          <Descriptions bordered column={1} size="small">
-            <Descriptions.Item label="商品名称">{detail?.name || '-'}</Descriptions.Item>
-            <Descriptions.Item label="货品类型">
-              {detail ? (
-                <Tag color={goodsTypeMeta[detail.goodsType || 'spot'].color}>
-                  {goodsTypeMeta[detail.goodsType || 'spot'].text}
-                </Tag>
-              ) : (
-                '-'
-              )}
-            </Descriptions.Item>
-            <Descriptions.Item label="主品类">{detail?.category || '-'}</Descriptions.Item>
-            <Descriptions.Item label="子品类">{detail?.subCategory || '-'}</Descriptions.Item>
-            <Descriptions.Item label="钢厂">{detail?.steelMill || '-'}</Descriptions.Item>
-            <Descriptions.Item label="规格">{detail?.spec || '-'}</Descriptions.Item>
-            <Descriptions.Item label="材质">{detail?.material || '-'}</Descriptions.Item>
-            <Descriptions.Item label="单位">{detail?.unit || '-'}</Descriptions.Item>
-            <Descriptions.Item label="价格">
-              {detail ? `¥${Number(detail.price ?? 0).toFixed(2)}` : '-'}
-            </Descriptions.Item>
-            <Descriptions.Item label="库存">{detail?.stock ?? '-'}</Descriptions.Item>
-            <Descriptions.Item label="最小起订量">{detail?.minOrderQty ?? '-'}</Descriptions.Item>
-            <Descriptions.Item label="交货周期">{detail?.deliveryDays ? `${detail.deliveryDays} 天` : '-'}</Descriptions.Item>
-            <Descriptions.Item label="报价有效期">{detail?.quoteValidity ? `${detail.quoteValidity} 小时` : '-'}</Descriptions.Item>
-            <Descriptions.Item label="捆包号">{detail?.bundleNo || '-'}</Descriptions.Item>
-            <Descriptions.Item label="绑定仓储资源">
-              {detail?.warehouseServiceId ? `#${detail.warehouseServiceId}` : '-'}
-            </Descriptions.Item>
-            <Descriptions.Item label="仓储方企业">
-              {detail?.warehouseEnterpriseId ? `#${detail.warehouseEnterpriseId}` : '-'}
-            </Descriptions.Item>
-            <Descriptions.Item label="仓库名称">{detail?.warehouseName || '-'}</Descriptions.Item>
-            <Descriptions.Item label="仓库编码">{detail?.warehouseCode || '-'}</Descriptions.Item>
-            <Descriptions.Item label="仓库地区">
-              {[detail?.province, detail?.city, detail?.district].filter(Boolean).join(' / ') || '-'}
-            </Descriptions.Item>
-            <Descriptions.Item label="仓库地址">{detail?.address || '-'}</Descriptions.Item>
-            <Descriptions.Item label="审核状态">
-              {detail ? (
-                <Tag color={statusMeta[detail.status as keyof typeof statusMeta]?.color ?? statusMeta[1].color}>
-                  {statusMeta[detail.status as keyof typeof statusMeta]?.text ?? statusMeta[1].text}
-                </Tag>
-              ) : (
-                '-'
-              )}
-            </Descriptions.Item>
-            <Descriptions.Item label="商城展示状态">
-              {detail ? (
-                <Tag color={marketplaceVisibilityMeta[detail.status as keyof typeof marketplaceVisibilityMeta]?.color ?? marketplaceVisibilityMeta[1].color}>
-                  {marketplaceVisibilityMeta[detail.status as keyof typeof marketplaceVisibilityMeta]?.text ?? marketplaceVisibilityMeta[1].text}
-                </Tag>
-              ) : (
-                '-'
-              )}
-            </Descriptions.Item>
-            <Descriptions.Item label="审核备注">{detail?.auditRemark || '-'}</Descriptions.Item>
-            <Descriptions.Item label="商品描述">{detail?.description || '-'}</Descriptions.Item>
-            <Descriptions.Item label="商品图片">
-              {detail?.images && detail.images.length > 0 ? (
-                <Space wrap>
-                  {detail.images.map((image) => (
-                    <Image
-                      key={image}
-                      src={image}
-                      width={100}
-                      height={100}
-                      style={{ objectFit: 'cover' }}
-                    />
-                  ))}
-                </Space>
-              ) : (
-                '-'
-              )}
-            </Descriptions.Item>
-            <Descriptions.Item label="审核时间">{formatDateTime(detail?.auditedAt)}</Descriptions.Item>
-            <Descriptions.Item label="创建时间">{formatDateTime(detail?.createdAt)}</Descriptions.Item>
-            <Descriptions.Item label="更新时间">{formatDateTime(detail?.updatedAt)}</Descriptions.Item>
-          </Descriptions>
+          <Space direction="vertical" size={16} style={{ width: '100%' }}>
+            <Alert
+              type="info"
+              showIcon
+              message="商品改动核对"
+              description="当前系统尚未保存完整历史字段快照；这里先按审核关键字段展示当前提交值，并标记待审核/驳回商品为待核对。后续卖家侧若落历史快照，可直接把审核基准替换为真实前值。"
+            />
+            <Table
+              size="small"
+              columns={compareColumns}
+              dataSource={detailCompareRows}
+              rowKey="key"
+              pagination={false}
+              scroll={{ x: 760 }}
+            />
+            <Descriptions bordered column={1} size="small">
+              <Descriptions.Item label="审核状态">
+                {detail ? (
+                  <Tag color={statusMeta[detail.status as keyof typeof statusMeta]?.color ?? statusMeta[1].color}>
+                    {statusMeta[detail.status as keyof typeof statusMeta]?.text ?? statusMeta[1].text}
+                  </Tag>
+                ) : (
+                  '-'
+                )}
+              </Descriptions.Item>
+              <Descriptions.Item label="商城展示状态">
+                {detail ? (
+                  <Tag color={marketplaceVisibilityMeta[detail.status as keyof typeof marketplaceVisibilityMeta]?.color ?? marketplaceVisibilityMeta[1].color}>
+                    {marketplaceVisibilityMeta[detail.status as keyof typeof marketplaceVisibilityMeta]?.text ?? marketplaceVisibilityMeta[1].text}
+                  </Tag>
+                ) : (
+                  '-'
+                )}
+              </Descriptions.Item>
+              <Descriptions.Item label="审核备注">{detail?.auditRemark || '-'}</Descriptions.Item>
+              <Descriptions.Item label="商品图片">
+                {detail?.images && detail.images.length > 0 ? (
+                  <Space wrap>
+                    {detail.images.map((image) => (
+                      <Image
+                        key={image}
+                        src={image}
+                        width={100}
+                        height={100}
+                        style={{ objectFit: 'cover' }}
+                      />
+                    ))}
+                  </Space>
+                ) : (
+                  '-'
+                )}
+              </Descriptions.Item>
+              <Descriptions.Item label="审核时间">{formatDateTime(detail?.auditedAt)}</Descriptions.Item>
+              <Descriptions.Item label="创建时间">{formatDateTime(detail?.createdAt)}</Descriptions.Item>
+              <Descriptions.Item label="更新时间">{formatDateTime(detail?.updatedAt)}</Descriptions.Item>
+            </Descriptions>
+          </Space>
         )}
       </Drawer>
 
@@ -301,6 +433,22 @@ export default function ProductList() {
         cancelText="取消"
         destroyOnHidden
       >
+        <Alert
+          className="mb-4"
+          type="warning"
+          showIcon
+          message="审核前请核对关键字段"
+          description="下方按商品基础、规格价格、履约仓储等维度汇总当前提交值。历史字段快照未落库时，审核基准暂显示为暂无历史快照。"
+        />
+        <Table
+          size="small"
+          columns={compareColumns}
+          dataSource={auditCompareRows}
+          rowKey="key"
+          pagination={false}
+          scroll={{ x: 760, y: 360 }}
+          style={{ marginBottom: 16 }}
+        />
         <Form form={auditForm} layout="vertical" initialValues={{ status: 1 }}>
           <Form.Item
             label="审核结果"

@@ -344,12 +344,8 @@ func columnsExist(ctx context.Context, db *sql.DB, table string) map[string]bool
 
 func mapProductIntStatus(raw int) int {
 	switch raw {
-	case 2:
-		return 1
-	case 3:
-		return 1
-	case 4:
-		return 2
+	case 0, 1, 2, 3, 4:
+		return raw
 	default:
 		return 0
 	}
