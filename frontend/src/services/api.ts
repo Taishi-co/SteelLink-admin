@@ -365,13 +365,23 @@ export interface ServiceOfferItem {
   updatedAt: string
 }
 
+type ServiceOfferAuditPayload = { status: number; auditAction?: 'approve' | 'reject'; auditRemark?: string }
+
+const serviceOfferAuditBody = (data: ServiceOfferAuditPayload) => ({
+  status: data.status,
+  audit_action: data.auditAction,
+  auditAction: data.auditAction,
+  audit_remark: data.auditRemark,
+  auditRemark: data.auditRemark,
+})
+
 export const serviceOfferApi = {
   listWarehouse: (params: PageParams) => get<PageResult<ServiceOfferItem>>('/warehouse-services', { params: { ...params, page_size: params.pageSize } }),
-  auditWarehouse: (id: number, data: { status: number; auditRemark?: string }) => put(`/warehouse-services/${id}/audit`, { status: data.status, audit_remark: data.auditRemark }),
+  auditWarehouse: (id: number, data: ServiceOfferAuditPayload) => put(`/warehouse-services/${id}/audit`, serviceOfferAuditBody(data)),
   listLogistics: (params: PageParams) => get<PageResult<ServiceOfferItem>>('/logistics-services', { params: { ...params, page_size: params.pageSize } }),
-  auditLogistics: (id: number, data: { status: number; auditRemark?: string }) => put(`/logistics-services/${id}/audit`, { status: data.status, audit_remark: data.auditRemark }),
+  auditLogistics: (id: number, data: ServiceOfferAuditPayload) => put(`/logistics-services/${id}/audit`, serviceOfferAuditBody(data)),
   listFinance: (params: PageParams) => get<PageResult<ServiceOfferItem>>('/finance-services', { params: { ...params, page_size: params.pageSize } }),
-  auditFinance: (id: number, data: { status: number; auditRemark?: string }) => put(`/finance-services/${id}/audit`, { status: data.status, audit_remark: data.auditRemark }),
+  auditFinance: (id: number, data: ServiceOfferAuditPayload) => put(`/finance-services/${id}/audit`, serviceOfferAuditBody(data)),
 }
 
 // Order API
