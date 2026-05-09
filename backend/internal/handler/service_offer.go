@@ -269,19 +269,31 @@ func auditServiceOffer(c *gin.Context, table string) {
 	defer cancel()
 	ensureServiceOfferTables(ctx, db)
 	var req struct {
-		Status      int    `json:"status"`
-		AuditRemark string `json:"auditRemark"`
+		Status           int    `json:"status"`
+		AuditAction      string `json:"auditAction"`
+		AuditActionSnake string `json:"audit_action"`
+		AuditRemark      string `json:"auditRemark"`
+		AuditRemarkSnake string `json:"audit_remark"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil || (req.Status != 1 && req.Status != 2) {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "审核状态无效，仅支持 1(通过) 或 2(驳回)"})
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "审核状态无效"})
 		return
 	}
-	statusValue := 2
-	if req.Status == 2 {
-		statusValue = 3
+	auditAction := req.AuditAction
+	if auditAction == "" {
+		auditAction = req.AuditActionSnake
+	}
+	auditRemark := req.AuditRemark
+	if auditRemark == "" {
+		auditRemark = req.AuditRemarkSnake
+	}
+	statusValue, ok := normalizeServiceOfferAuditStatus(req.Status, auditAction)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "审核状态无效，仅支持通过或驳回"})
+		return
 	}
 	setParts := []string{"status = ?", "audit_remark = ?", "updated_at = ?"}
-	args := []any{statusValue, req.AuditRemark, time.Now()}
+	args := []any{statusValue, auditRemark, time.Now()}
 	if statusValue == 2 {
 		setParts = append(setParts, "approved_at = ?")
 		args = append(args, time.Now())
@@ -300,4 +312,20 @@ func auditServiceOffer(c *gin.Context, table string) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": true})
+}
+
+func normalizeServiceOfferAuditStatus(status int, auditAction string) (int, bool) {
+	switch strings.ToLower(strings.TrimSpace(auditAction)) {
+	case "approve":
+		return 2, true
+	case "reject":
+		return 3, true
+	}
+	switch status {
+	case 1, 2:
+		return 2, true
+	case 3:
+		return 3, true
+	}
+	return 0, false
 }

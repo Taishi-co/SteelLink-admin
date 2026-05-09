@@ -22,6 +22,16 @@ function renderLongText(value?: string) {
   return value ? <Typography.Text ellipsis={{ tooltip: value }}>{value}</Typography.Text> : '-'
 }
 
+type AuditFormValues = { status: number; auditRemark?: string }
+
+function toAuditPayload(values: AuditFormValues) {
+  return {
+    status: values.status,
+    auditAction: values.status === 2 ? 'approve' as const : 'reject' as const,
+    auditRemark: values.auditRemark,
+  }
+}
+
 export default function ServiceOfferAudit({ type }: { type: 'warehouse' | 'logistics' | 'finance' }) {
   const [params, setParams] = useState<PageParams>({ page: 1, pageSize: 10, status: 1 })
   const [target, setTarget] = useState<ServiceOfferItem | null>(null)
@@ -36,8 +46,10 @@ export default function ServiceOfferAudit({ type }: { type: 'warehouse' | 'logis
   })
 
   const { mutate: audit, isPending } = useMutation({
-    mutationFn: ({ id, values }: { id: number; values: { status: number; auditRemark?: string } }) =>
-      isWarehouse ? serviceOfferApi.auditWarehouse(id, values) : isFinance ? serviceOfferApi.auditFinance(id, values) : serviceOfferApi.auditLogistics(id, values),
+    mutationFn: ({ id, values }: { id: number; values: AuditFormValues }) => {
+      const payload = toAuditPayload(values)
+      return isWarehouse ? serviceOfferApi.auditWarehouse(id, payload) : isFinance ? serviceOfferApi.auditFinance(id, payload) : serviceOfferApi.auditLogistics(id, payload)
+    },
     onSuccess: () => {
       message.success('审核完成')
       setTarget(null)
@@ -78,7 +90,7 @@ export default function ServiceOfferAudit({ type }: { type: 'warehouse' | 'logis
     {
       title: '操作',
       width: 120,
-      render: (_, record) => record.status === 1 ? (
+      render: (_, record) => record.status === 1 || record.status === 3 ? (
         <Button
           type="link"
           size="small"
@@ -87,7 +99,7 @@ export default function ServiceOfferAudit({ type }: { type: 'warehouse' | 'logis
             form.setFieldsValue({ status: 2, auditRemark: record.auditRemark })
           }}
         >
-          审核
+          {record.status === 3 ? '重新审核' : '审核'}
         </Button>
       ) : '-',
     },
