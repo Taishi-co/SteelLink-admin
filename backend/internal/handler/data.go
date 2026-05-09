@@ -357,12 +357,14 @@ func mapProductStatus(raw string) int {
 	}
 	switch strings.ToLower(raw) {
 	case "2", "approved":
-		return 1
+		return 2
 	case "4", "rejected":
-		return 2
+		return 4
 	case "3", "offline":
-		return 2
-	case "1", "0", "pending_review", "draft":
+		return 3
+	case "1", "pending_review":
+		return 1
+	case "0", "draft":
 		return 0
 	default:
 		return 0
