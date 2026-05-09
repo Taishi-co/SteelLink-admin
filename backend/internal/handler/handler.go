@@ -1553,15 +1553,48 @@ func ListProducts(c *gin.Context) {
 	limit, offset := parsePageParams(c.Query("page"), c.Query("pageSize"))
 	whereParts := []string{"deleted_at IS NULL"}
 	args := make([]any, 0)
+	if keyword := strings.TrimSpace(c.Query("keyword")); keyword != "" {
+		kw := "%" + keyword + "%"
+		whereParts = append(whereParts, `(name LIKE ? OR COALESCE(category, '') LIKE ? OR COALESCE(sub_category, '') LIKE ? OR COALESCE(steel_mill, '') LIKE ? OR COALESCE(bundle_no, '') LIKE ? OR COALESCE(product_no, '') LIKE ? OR COALESCE(description, '') LIKE ?)`)
+		args = append(args, kw, kw, kw, kw, kw, kw, kw)
+	}
 	if status := c.Query("status"); status != "" {
 		statusValue, err := strconv.Atoi(status)
-		if err == nil {
-			switch statusValue {
-			case 0, 1, 2, 3, 4:
-				whereParts = append(whereParts, "status = ?")
-				args = append(args, statusValue)
-			}
+		if err == nil && statusValue >= 0 && statusValue <= 4 {
+			whereParts = append(whereParts, "status = ?")
+			args = append(args, statusValue)
 		}
+	}
+	if enterpriseID := c.Query("enterpriseId"); enterpriseID == "" {
+		if enterpriseID = c.Query("enterprise_id"); enterpriseID != "" {
+			whereParts = append(whereParts, "enterprise_id = ?")
+			args = append(args, enterpriseID)
+		}
+	} else {
+		whereParts = append(whereParts, "enterprise_id = ?")
+		args = append(args, enterpriseID)
+	}
+	if category := strings.TrimSpace(c.Query("category")); category != "" {
+		whereParts = append(whereParts, "category = ?")
+		args = append(args, category)
+	}
+	if subCategory := strings.TrimSpace(c.Query("subCategory")); subCategory != "" {
+		whereParts = append(whereParts, "sub_category = ?")
+		args = append(args, subCategory)
+	}
+	if goodsType := strings.TrimSpace(c.Query("goodsType")); goodsType != "" && columnExists(ctx, db, "products", "goods_type") {
+		whereParts = append(whereParts, "goods_type = ?")
+		args = append(args, goodsType)
+	}
+	if warehouseServiceID := c.Query("warehouseServiceId"); warehouseServiceID == "" {
+		warehouseServiceID = c.Query("warehouse_service_id")
+		if warehouseServiceID != "" && columnExists(ctx, db, "products", "warehouse_service_id") {
+			whereParts = append(whereParts, "warehouse_service_id = ?")
+			args = append(args, warehouseServiceID)
+		}
+	} else if columnExists(ctx, db, "products", "warehouse_service_id") {
+		whereParts = append(whereParts, "warehouse_service_id = ?")
+		args = append(args, warehouseServiceID)
 	}
 	whereClause := strings.Join(whereParts, " AND ")
 	goodsTypeExpr := "'spot'"

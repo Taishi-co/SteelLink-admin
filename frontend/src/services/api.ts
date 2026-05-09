@@ -22,6 +22,11 @@ export interface PageParams {
   pageSize: number
   keyword?: string
   status?: number
+  enterpriseId?: number
+  category?: string
+  subCategory?: string
+  goodsType?: string
+  warehouseServiceId?: number
 }
 
 export interface PageResult<T> {
