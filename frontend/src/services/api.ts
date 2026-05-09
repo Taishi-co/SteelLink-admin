@@ -496,8 +496,21 @@ export interface PrivateFileURLResult {
   expiresIn: number
 }
 
+export interface UploadFileResult {
+  url: string
+  key: string
+}
+
 export const fileApi = {
   getPrivateUrl: (url: string) => get<PrivateFileURLResult>('/files/private-url', { params: { url } }),
+  upload: (file: File, purpose: string) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('purpose', purpose)
+    return post<UploadFileResult>('/files/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
 }
 
 export interface AIProcurementStageConfig {
