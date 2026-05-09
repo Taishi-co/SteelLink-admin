@@ -251,10 +251,83 @@ export interface ProductItem {
   updatedAt?: string
 }
 
+type BackendProductItem = Omit<ProductItem, 'spec'> & {
+  spec?: string | Record<string, unknown>
+  enterprise_id?: number
+  sub_category?: string
+  steel_mill?: string
+  goods_type?: 'spot' | 'futures'
+  warehouse_service_id?: number
+  warehouse_enterprise_id?: number
+  warehouse_info?: {
+    warehouse_name?: string
+    warehouse_code?: string
+    province?: string
+    city?: string
+    district?: string
+    address?: string
+  }
+  bundle_no?: string
+  unit_price?: number
+  available_qty?: number
+  quantity?: number
+  min_order_qty?: number
+  delivery_days?: number
+  quote_validity?: number
+  audit_remark?: string
+  approved_at?: string
+  created_at?: string
+  updated_at?: string
+}
+
+const productParams = (params: PageParams) => ({
+  ...params,
+  page_size: params.pageSize,
+})
+
+const normalizeProduct = (item: BackendProductItem): ProductItem => {
+  const warehouse = item.warehouse_info || {}
+  return {
+    ...item,
+    enterpriseId: item.enterpriseId ?? item.enterprise_id ?? 0,
+    subCategory: item.subCategory ?? item.sub_category,
+    steelMill: item.steelMill ?? item.steel_mill,
+    goodsType: item.goodsType ?? item.goods_type,
+    warehouseServiceId: item.warehouseServiceId ?? item.warehouse_service_id,
+    warehouseEnterpriseId: item.warehouseEnterpriseId ?? item.warehouse_enterprise_id,
+    warehouseName: item.warehouseName ?? warehouse.warehouse_name,
+    warehouseCode: item.warehouseCode ?? warehouse.warehouse_code,
+    province: item.province ?? warehouse.province,
+    city: item.city ?? warehouse.city,
+    district: item.district ?? warehouse.district,
+    address: item.address ?? warehouse.address,
+    bundleNo: item.bundleNo ?? item.bundle_no,
+    spec: typeof item.spec === 'string' ? item.spec : item.spec ? JSON.stringify(item.spec) : undefined,
+    price: item.price ?? item.unit_price ?? 0,
+    stock: item.stock ?? item.available_qty ?? item.quantity ?? 0,
+    minOrderQty: item.minOrderQty ?? item.min_order_qty,
+    deliveryDays: item.deliveryDays ?? item.delivery_days,
+    quoteValidity: item.quoteValidity ?? item.quote_validity,
+    auditRemark: item.auditRemark ?? item.audit_remark,
+    auditedAt: item.auditedAt ?? item.approved_at,
+    createdAt: item.createdAt ?? item.created_at ?? '',
+    updatedAt: item.updatedAt ?? item.updated_at,
+  }
+}
+
 export const productApi = {
-  list: (params: PageParams) => get<PageResult<ProductItem>>('/products', { params }),
-  get: (id: number) => get<ProductItem>(`/products/${id}`),
-  audit: (id: number, data: { status: number; auditRemark?: string }) => put(`/products/${id}/audit`, data),
+  list: async (params: PageParams) => {
+    const response = await get<PageResult<BackendProductItem>>('/products', { params: productParams(params) })
+    response.data.data.list = response.data.data.list.map(normalizeProduct)
+    return response as unknown as Awaited<ReturnType<typeof get<PageResult<ProductItem>>>>
+  },
+  get: async (id: number) => {
+    const response = await get<BackendProductItem>(`/products/${id}`)
+    response.data.data = normalizeProduct(response.data.data)
+    return response as unknown as Awaited<ReturnType<typeof get<ProductItem>>>
+  },
+  audit: (id: number, data: { status: number; auditRemark?: string }) =>
+    put(`/products/${id}/status`, { status: data.status, audit_remark: data.auditRemark }),
 }
 
 export interface ServiceOfferItem {
@@ -293,12 +366,12 @@ export interface ServiceOfferItem {
 }
 
 export const serviceOfferApi = {
-  listWarehouse: (params: PageParams) => get<PageResult<ServiceOfferItem>>('/warehouse-services', { params }),
-  auditWarehouse: (id: number, data: { status: number; auditRemark?: string }) => put(`/warehouse-services/${id}/audit`, data),
-  listLogistics: (params: PageParams) => get<PageResult<ServiceOfferItem>>('/logistics-services', { params }),
-  auditLogistics: (id: number, data: { status: number; auditRemark?: string }) => put(`/logistics-services/${id}/audit`, data),
-  listFinance: (params: PageParams) => get<PageResult<ServiceOfferItem>>('/finance-services', { params }),
-  auditFinance: (id: number, data: { status: number; auditRemark?: string }) => put(`/finance-services/${id}/audit`, data),
+  listWarehouse: (params: PageParams) => get<PageResult<ServiceOfferItem>>('/warehouse-services', { params: { ...params, page_size: params.pageSize } }),
+  auditWarehouse: (id: number, data: { status: number; auditRemark?: string }) => put(`/warehouse-services/${id}/audit`, { status: data.status, audit_remark: data.auditRemark }),
+  listLogistics: (params: PageParams) => get<PageResult<ServiceOfferItem>>('/logistics-services', { params: { ...params, page_size: params.pageSize } }),
+  auditLogistics: (id: number, data: { status: number; auditRemark?: string }) => put(`/logistics-services/${id}/audit`, { status: data.status, audit_remark: data.auditRemark }),
+  listFinance: (params: PageParams) => get<PageResult<ServiceOfferItem>>('/finance-services', { params: { ...params, page_size: params.pageSize } }),
+  auditFinance: (id: number, data: { status: number; auditRemark?: string }) => put(`/finance-services/${id}/audit`, { status: data.status, audit_remark: data.auditRemark }),
 }
 
 // Order API

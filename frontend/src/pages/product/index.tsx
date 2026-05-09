@@ -22,15 +22,19 @@ import { productApi, ProductItem, PageParams } from '../../services/api'
 import { formatDateTime } from '../../utils/format'
 
 const statusMeta = {
-  0: { color: 'orange', text: '待审核' },
-  1: { color: 'green', text: '已通过' },
-  2: { color: 'red', text: '已驳回' },
+  0: { color: 'default', text: '草稿' },
+  1: { color: 'orange', text: '待审核' },
+  2: { color: 'green', text: '已上架' },
+  3: { color: 'default', text: '已下架' },
+  4: { color: 'red', text: '审核拒绝' },
 } as const
 
 const marketplaceVisibilityMeta = {
-  0: { color: 'gold', text: '待审核，商城暂不可见' },
-  1: { color: 'green', text: '审核通过，商城可见' },
-  2: { color: 'red', text: '审核驳回，商城不可见' },
+  0: { color: 'default', text: '草稿，商城不可见' },
+  1: { color: 'gold', text: '待审核，商城暂不可见' },
+  2: { color: 'green', text: '已上架，商城可见' },
+  3: { color: 'default', text: '已下架，商城不可见' },
+  4: { color: 'red', text: '审核拒绝，商城不可见' },
 } as const
 
 const goodsTypeMeta = {
@@ -64,7 +68,7 @@ export default function ProductList() {
       productApi.audit(id, values),
     onSuccess: (_, variables) => {
       message.success(
-        variables.values.status === 1
+        variables.values.status === 2
           ? '商品审核已通过，当前已进入商城展示范围'
           : '商品已驳回，当前不会进入商城展示',
       )
@@ -106,7 +110,7 @@ export default function ProductList() {
       key: 'status',
       width: 110,
       render: (status: number) => {
-        const meta = statusMeta[status as 0 | 1 | 2] ?? statusMeta[0]
+        const meta = statusMeta[status as keyof typeof statusMeta] ?? statusMeta[1]
         return <Tag color={meta.color}>{meta.text}</Tag>
       },
     },
@@ -139,7 +143,7 @@ export default function ProductList() {
             onClick={() => {
               setAuditTarget(record)
               auditForm.setFieldsValue({
-                status: record.status === 1 ? 1 : 2,
+                status: record.status === 4 ? 4 : 2,
                 auditRemark: record.auditRemark,
               })
             }}
@@ -162,9 +166,11 @@ export default function ProductList() {
             style={{ width: 180 }}
             onChange={(status) => setParams({ ...params, page: 1, status })}
             options={[
-              { label: '待审核', value: 0 },
-              { label: '已通过', value: 1 },
-              { label: '已驳回', value: 2 },
+              { label: '草稿', value: 0 },
+              { label: '待审核', value: 1 },
+              { label: '已上架', value: 2 },
+              { label: '已下架', value: 3 },
+              { label: '审核拒绝', value: 4 },
             ]}
           />
         </Space>
@@ -232,8 +238,8 @@ export default function ProductList() {
             <Descriptions.Item label="仓库地址">{detail?.address || '-'}</Descriptions.Item>
             <Descriptions.Item label="审核状态">
               {detail ? (
-                <Tag color={statusMeta[detail.status as 0 | 1 | 2]?.color ?? statusMeta[0].color}>
-                  {statusMeta[detail.status as 0 | 1 | 2]?.text ?? statusMeta[0].text}
+                <Tag color={statusMeta[detail.status as keyof typeof statusMeta]?.color ?? statusMeta[1].color}>
+                  {statusMeta[detail.status as keyof typeof statusMeta]?.text ?? statusMeta[1].text}
                 </Tag>
               ) : (
                 '-'
@@ -241,8 +247,8 @@ export default function ProductList() {
             </Descriptions.Item>
             <Descriptions.Item label="商城展示状态">
               {detail ? (
-                <Tag color={marketplaceVisibilityMeta[detail.status as 0 | 1 | 2]?.color ?? marketplaceVisibilityMeta[0].color}>
-                  {marketplaceVisibilityMeta[detail.status as 0 | 1 | 2]?.text ?? marketplaceVisibilityMeta[0].text}
+                <Tag color={marketplaceVisibilityMeta[detail.status as keyof typeof marketplaceVisibilityMeta]?.color ?? marketplaceVisibilityMeta[1].color}>
+                  {marketplaceVisibilityMeta[detail.status as keyof typeof marketplaceVisibilityMeta]?.text ?? marketplaceVisibilityMeta[1].text}
                 </Tag>
               ) : (
                 '-'
@@ -295,7 +301,7 @@ export default function ProductList() {
         cancelText="取消"
         destroyOnHidden
       >
-        <Form form={auditForm} layout="vertical" initialValues={{ status: 1 }}>
+        <Form form={auditForm} layout="vertical" initialValues={{ status: 2 }}>
           <Form.Item
             label="审核结果"
             name="status"
@@ -304,8 +310,8 @@ export default function ProductList() {
             <Segmented
               block
               options={[
-                { label: '通过', value: 1 },
-                { label: '驳回', value: 2 },
+                { label: '通过上架', value: 2 },
+                { label: '驳回', value: 4 },
               ]}
             />
           </Form.Item>
