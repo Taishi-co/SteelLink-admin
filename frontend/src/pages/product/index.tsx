@@ -68,7 +68,7 @@ export default function ProductList() {
       productApi.audit(id, values),
     onSuccess: (_, variables) => {
       message.success(
-        variables.values.status === 2
+        variables.values.status === 1
           ? '商品审核已通过，当前已进入商城展示范围'
           : '商品已驳回，当前不会进入商城展示',
       )
@@ -143,7 +143,7 @@ export default function ProductList() {
             onClick={() => {
               setAuditTarget(record)
               auditForm.setFieldsValue({
-                status: record.status === 4 ? 4 : 2,
+                status: record.status === 4 ? 2 : 1,
                 auditRemark: record.auditRemark,
               })
             }}
@@ -301,7 +301,7 @@ export default function ProductList() {
         cancelText="取消"
         destroyOnHidden
       >
-        <Form form={auditForm} layout="vertical" initialValues={{ status: 2 }}>
+        <Form form={auditForm} layout="vertical" initialValues={{ status: 1 }}>
           <Form.Item
             label="审核结果"
             name="status"
@@ -310,8 +310,8 @@ export default function ProductList() {
             <Segmented
               block
               options={[
-                { label: '通过上架', value: 2 },
-                { label: '驳回', value: 4 },
+                { label: '通过上架', value: 1 },
+                { label: '驳回', value: 2 },
               ]}
             />
           </Form.Item>
