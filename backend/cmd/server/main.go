@@ -11,6 +11,10 @@ import (
 	"github.com/joho/godotenv"
 )
 
+func shouldAllowDegradedStartup() bool {
+	return os.Getenv("GIN_MODE") != gin.ReleaseMode
+}
+
 func main() {
 	// Load optional local env file for backend development.
 	_ = godotenv.Load()
@@ -21,7 +25,11 @@ func main() {
 	}
 
 	if err := database.InitMySQL(); err != nil {
-		log.Fatalf("Failed to connect MySQL: %v", err)
+		if shouldAllowDegradedStartup() {
+			log.Printf("Warning: failed to connect MySQL, starting in degraded mode: %v", err)
+		} else {
+			log.Fatalf("Failed to connect MySQL: %v", err)
+		}
 	}
 	defer func() {
 		if err := database.CloseMySQL(); err != nil {
@@ -30,7 +38,11 @@ func main() {
 	}()
 
 	if err := database.InitRedis(); err != nil {
-		log.Fatalf("Failed to connect Redis: %v", err)
+		if shouldAllowDegradedStartup() {
+			log.Printf("Warning: failed to connect Redis, starting in degraded mode: %v", err)
+		} else {
+			log.Fatalf("Failed to connect Redis: %v", err)
+		}
 	}
 	defer func() {
 		if err := database.CloseRedis(); err != nil {
@@ -38,8 +50,12 @@ func main() {
 		}
 	}()
 
-	handler.AutoMigrate(database.GetDB())
-	log.Println("Auto-migration completed")
+	if database.GetDB() != nil {
+		handler.AutoMigrate(database.GetDB())
+		log.Println("Auto-migration completed")
+	} else {
+		log.Println("Skipping auto-migration because MySQL is unavailable")
+	}
 
 	// Create Gin engine
 	r := gin.Default()

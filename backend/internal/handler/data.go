@@ -559,6 +559,10 @@ func deleteLocalAdmin(id int64) bool {
 }
 
 func AutoMigrate(db *sql.DB) {
+	if db == nil {
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
