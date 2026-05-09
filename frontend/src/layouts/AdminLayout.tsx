@@ -31,6 +31,7 @@ import {
   RocketOutlined,
   ExperimentOutlined,
   TruckOutlined,
+  MailOutlined,
 } from '@ant-design/icons'
 import type { MenuProps } from 'antd'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
@@ -73,6 +74,7 @@ const iconMap: Record<string, React.ReactNode> = {
   RocketOutlined: <RocketOutlined />,
   ExperimentOutlined: <ExperimentOutlined />,
   TruckOutlined: <TruckOutlined />,
+  MailOutlined: <MailOutlined />,
 }
 
 const fallbackMenuItems: MenuProps['items'] = [
@@ -123,7 +125,18 @@ const fallbackMenuItems: MenuProps['items'] = [
     icon: <FileTextOutlined />,
     label: '操作日志',
   },
+  {
+    key: '/notification',
+    icon: <MailOutlined />,
+    label: '站内信',
+  },
 ]
+
+const notificationMenuItem: NonNullable<MenuProps['items']>[number] = {
+  key: '/notification',
+  icon: <MailOutlined />,
+  label: '站内信',
+}
 
 function apiMenuToAntd(items: ApiMenuItem[]): MenuProps['items'] {
   if (!items || items.length === 0) return fallbackMenuItems
@@ -170,6 +183,7 @@ const pageMeta: Record<string, { title: string; description: string }> = {
   '/product/order': { title: '订单管理', description: '交易订单与履约管理' },
   '/product/category': { title: '类目配置', description: '商品类目结构管理' },
   '/ai-procurement/config': { title: 'AI采购配置', description: '配置AI采购流程、模型、商品匹配、融资与审核策略' },
+  '/notification': { title: '站内信', description: '向用户发送平台通知' },
   '/log': { title: '操作日志', description: '管理员操作审计日志' },
 }
 
@@ -197,11 +211,17 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   const menuItems = useMemo(() => {
     if (apiMenus.length > 0) {
-      return apiMenuToAntd(apiMenus)
+      return [...(apiMenuToAntd(apiMenus) || []), notificationMenuItem]
     }
     return fallbackMenuItems
   }, [apiMenus])
-  const allowedPaths = useMemo(() => collectMenuPaths(apiMenus), [apiMenus])
+  const allowedPaths = useMemo(() => {
+    const paths = collectMenuPaths(apiMenus)
+    if (paths.length > 0 && !paths.includes('/notification')) {
+      paths.push('/notification')
+    }
+    return paths
+  }, [apiMenus])
   const firstAllowedPath = allowedPaths[0] || '/dashboard'
   const routeAllowed = menuLoading || allowedPaths.length === 0 || allowedPaths.includes(location.pathname)
 
