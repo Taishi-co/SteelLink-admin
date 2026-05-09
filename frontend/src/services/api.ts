@@ -538,6 +538,7 @@ export interface CategoryItem {
   imageUrl?: string
   sort: number
   status: number
+  productCount?: number
   children?: CategoryItem[]
 }
 

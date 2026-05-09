@@ -2233,6 +2233,7 @@ func ListProductCategories(c *gin.Context) {
 				c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 				return
 			}
+			item.ProductCount = countProductsForCategory(ctx, db, item)
 			items = append(items, item)
 		}
 		c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": pageResult[categoryItem]{List: items, Total: len(items)}})
@@ -2244,6 +2245,43 @@ func ListProductCategories(c *gin.Context) {
 		"message": "success",
 		"data":    pageResult[categoryItem]{List: []categoryItem{}, Total: 0},
 	})
+}
+
+func countProductsForCategory(ctx context.Context, db *sql.DB, category categoryItem) int {
+	if db == nil || !tableExists(ctx, db, "products") {
+		return 0
+	}
+	conditions := []string{}
+	args := []any{}
+	productColumns := columnsExist(ctx, db, "products")
+	if productColumns["category_id"] {
+		conditions = append(conditions, "category_id = ?")
+		args = append(args, category.ID)
+	}
+	names := []string{category.Name, category.DisplayName, category.Code}
+	for _, name := range names {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		if productColumns["category"] {
+			conditions = append(conditions, "category = ?")
+			args = append(args, name)
+		}
+		if productColumns["sub_category"] {
+			conditions = append(conditions, "sub_category = ?")
+			args = append(args, name)
+		}
+	}
+	if len(conditions) == 0 {
+		return 0
+	}
+	var total int
+	query := fmt.Sprintf("SELECT COUNT(*) FROM products WHERE deleted_at IS NULL AND (%s)", strings.Join(conditions, " OR "))
+	if err := db.QueryRowContext(ctx, query, args...).Scan(&total); err != nil {
+		return 0
+	}
+	return total
 }
 
 // CreateProductCategory creates a new product category
@@ -2325,6 +2363,20 @@ func DeleteProductCategory(c *gin.Context) {
 	defer cancel()
 	if db == nil || !tableExists(ctx, db, "product_categories") {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"code": 503, "message": "database unavailable"})
+		return
+	}
+	var item categoryItem
+	row := db.QueryRowContext(ctx, `SELECT id, COALESCE(parent_id, 0), name, COALESCE(display_name, ''), COALESCE(code, ''), COALESCE(icon, ''), COALESCE(image_url, ''), COALESCE(sort, 0), COALESCE(status, 1) FROM product_categories WHERE id=? AND deleted_at IS NULL LIMIT 1`, c.Param("id"))
+	if err := row.Scan(&item.ID, &item.ParentID, &item.Name, &item.DisplayName, &item.Code, &item.Icon, &item.ImageURL, &item.Sort, &item.Status); err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "category not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+	if count := countProductsForCategory(ctx, db, item); count > 0 {
+		c.JSON(http.StatusConflict, gin.H{"code": 409, "message": fmt.Sprintf("该类目下仍有 %d 个商品，不能删除", count)})
 		return
 	}
 	result, err := db.ExecContext(ctx, `UPDATE product_categories SET deleted_at=? WHERE id=? AND deleted_at IS NULL`, time.Now(), c.Param("id"))
