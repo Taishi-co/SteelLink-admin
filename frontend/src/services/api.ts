@@ -174,6 +174,22 @@ export const enterpriseApi = {
     put(`/enterprises/${id}/services/${service}/status`, data),
 }
 
+export interface SendNotificationPayload {
+  recipient_user_ids?: number[]
+  recipient_enterprise_ids?: number[]
+  recipient_roles?: string[]
+  send_to_all?: boolean
+  type?: 'admin' | 'order' | 'audit' | 'system'
+  title: string
+  content: string
+  link_url?: string
+  metadata?: Record<string, unknown>
+}
+
+export const notificationApi = {
+  send: (data: SendNotificationPayload) => post<{ created: number }>('/admin/notifications', data),
+}
+
 export interface ServiceDocumentItem {
   id: number
   applicationId: number
