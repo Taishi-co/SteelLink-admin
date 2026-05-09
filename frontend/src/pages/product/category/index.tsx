@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { Card, Table, Tag, Button, Space, Popconfirm, message, Modal, Form, Input, InputNumber, Select } from 'antd'
-import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
+import { Card, Table, Tag, Button, Space, Popconfirm, message, Modal, Form, Input, InputNumber, Select, Upload } from 'antd'
+import { PlusOutlined, EditOutlined, DeleteOutlined, UploadOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
+import type { UploadProps } from 'antd'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { categoryApi, CategoryItem } from '../../../services/api'
+import { categoryApi, CategoryItem, fileApi } from '../../../services/api'
 
 interface CategoryFormValues {
   name: string
@@ -62,6 +63,31 @@ export default function CategoryList() {
   const handleSubmit = async () => {
     const values = await form.validateFields()
     if (editingItem) { updateCategory({ id: editingItem.id, values }) } else { createCategory(values) }
+  }
+
+  const handleImageUpload: UploadProps['customRequest'] = async (options) => {
+    const file = options.file as File
+    try {
+      const response = await fileApi.upload(file, 'product_category_nav')
+      const imageUrl = response.data.data.url
+      form.setFieldValue('imageUrl', imageUrl)
+      options.onSuccess?.(response.data, file)
+      message.success('导航图片已上传')
+    } catch (error) {
+      options.onError?.(error as Error)
+    }
+  }
+
+  const beforeImageUpload: UploadProps['beforeUpload'] = (file) => {
+    if (!file.type.startsWith('image/')) {
+      message.error('只能上传图片文件')
+      return Upload.LIST_IGNORE
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      message.error('图片不能超过 5MB')
+      return Upload.LIST_IGNORE
+    }
+    return true
   }
 
   const columns: ColumnsType<CategoryItem> = [
@@ -125,8 +151,35 @@ export default function CategoryList() {
           <Form.Item label="导航图标" name="icon">
             <Input placeholder="如：钢；无图片时作为文本图标展示" />
           </Form.Item>
-          <Form.Item label="导航图片 URL" name="imageUrl">
-            <Input placeholder="https://..." />
+          <Form.Item label="导航图片" extra="可直接上传图片，也可粘贴已有图片 URL。">
+            <Space direction="vertical" style={{ width: '100%' }} size={8}>
+              <Space.Compact style={{ width: '100%' }}>
+                <Upload
+                  accept="image/*"
+                  maxCount={1}
+                  showUploadList={false}
+                  beforeUpload={beforeImageUpload}
+                  customRequest={handleImageUpload}
+                >
+                  <Button icon={<UploadOutlined />}>上传</Button>
+                </Upload>
+                <Form.Item name="imageUrl" noStyle>
+                  <Input placeholder="https://..." />
+                </Form.Item>
+              </Space.Compact>
+              <Form.Item shouldUpdate noStyle>
+                {({ getFieldValue }) => {
+                  const imageUrl = getFieldValue('imageUrl') as string | undefined
+                  return imageUrl ? (
+                    <img
+                      src={imageUrl}
+                      alt="导航图片预览"
+                      style={{ width: 112, height: 72, objectFit: 'cover', borderRadius: 4, border: '1px solid #f0f0f0' }}
+                    />
+                  ) : null
+                }}
+              </Form.Item>
+            </Space>
           </Form.Item>
           <Form.Item label="排序" name="sort">
             <InputNumber min={0} style={{ width: '100%' }} />
