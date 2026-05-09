@@ -327,7 +327,7 @@ export const productApi = {
     return response as unknown as Awaited<ReturnType<typeof get<ProductItem>>>
   },
   audit: (id: number, data: { status: number; auditRemark?: string }) =>
-    put(`/products/${id}/status`, { status: data.status, audit_remark: data.auditRemark }),
+    put(`/products/${id}/audit`, { status: data.status, auditRemark: data.auditRemark, audit_remark: data.auditRemark }),
 }
 
 export interface ServiceOfferItem {
