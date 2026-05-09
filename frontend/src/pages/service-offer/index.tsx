@@ -84,7 +84,7 @@ export default function ServiceOfferAudit({ type }: { type: 'warehouse' | 'logis
           size="small"
           onClick={() => {
             setTarget(record)
-            form.setFieldsValue({ status: 1, auditRemark: record.auditRemark })
+            form.setFieldsValue({ status: 2, auditRemark: record.auditRemark })
           }}
         >
           审核
@@ -133,9 +133,9 @@ export default function ServiceOfferAudit({ type }: { type: 'warehouse' | 'logis
         confirmLoading={isPending}
         okText="提交审核"
       >
-        <Form form={form} layout="vertical" initialValues={{ status: 1 }}>
+        <Form form={form} layout="vertical" initialValues={{ status: 2 }}>
           <Form.Item label="审核结果" name="status" rules={[{ required: true }]}>
-            <Segmented block options={[{ label: '通过', value: 1 }, { label: '驳回', value: 2 }]} />
+            <Segmented block options={[{ label: '通过', value: 2 }, { label: '驳回', value: 3 }]} />
           </Form.Item>
           <Form.Item label="审核备注" name="auditRemark">
             <Input.TextArea rows={4} placeholder="请输入审核说明" />
