@@ -19,7 +19,7 @@
 ## 实施步骤
 
 1. 扩展 Admin AI 采购配置 DTO，增加视觉识别字段和密钥状态。
-2. 规范默认值: `minimax_token_plan`、`https://api.minimax.io/v1/coding_plan/vlm`、`MINIMAX_TOKEN_PLAN_API_KEY`。
+2. 规范默认值: `minimax_token_plan`、`https://api.minimaxi.com/v1/coding_plan/vlm`、`MINIMAX_TOKEN_PLAN_API_KEY`。
 3. 前端配置页增加商品截图识别配置块。
 4. 增加后端单元测试验证旧配置补默认值和密钥状态。
 5. 执行 Admin 后端测试、前端 typecheck/build 和 release gate。

@@ -220,10 +220,10 @@ func defaultAIProcurementConfig() aiProcurementConfig {
 		Model: aiProcurementModelConfig{
 			ParsingEnabled:      false,
 			Provider:            "minimax",
-			BaseURL:             "https://api.minimax.io/v1/chat/completions",
+			BaseURL:             "https://api.minimaxi.com/anthropic",
 			APIKeyEnv:           "MINIMAX_API_KEY",
 			VisionProvider:      "minimax_token_plan",
-			VisionBaseURL:       "https://api.minimax.io/v1/coding_plan/vlm",
+			VisionBaseURL:       "https://api.minimaxi.com/v1/coding_plan/vlm",
 			VisionAPIKeyEnv:     "MINIMAX_TOKEN_PLAN_API_KEY",
 			Model:               "MiniMax-M2.7",
 			Temperature:         0.2,
