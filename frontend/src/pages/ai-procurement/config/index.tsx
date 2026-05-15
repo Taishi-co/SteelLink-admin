@@ -40,6 +40,11 @@ const modelProviderOptions = [
   { label: '私有模型服务', value: 'private_endpoint' },
 ]
 
+const visionProviderOptions = [
+  { label: 'MiniMax Token Plan', value: 'minimax_token_plan' },
+  { label: 'Chat Completions图片模型', value: 'chat_completions' },
+]
+
 const modelNameOptions = [
   { label: 'MiniMax-M2.7', value: 'MiniMax-M2.7' },
   { label: 'MiniMax-M2.7-highspeed', value: 'MiniMax-M2.7-highspeed' },
@@ -234,8 +239,43 @@ export default function AIProcurementConfigPage() {
                 type="warning"
                 showIcon
                 style={{ marginBottom: 16 }}
-                message="API Key 不在管理端落库。请在后端运行环境配置 MINIMAX_API_KEY，页面只保存环境变量名。"
+                message="API Key 不在管理端落库。请在后端运行环境配置对应密钥，页面只保存环境变量名。"
               />
+              <div style={{ fontWeight: 600, marginBottom: 12 }}>商品截图识别</div>
+              <Row gutter={12}>
+                <Col span={12}>
+                  <Form.Item name={['model', 'visionProvider']} label="图片模型供应方" rules={[{ required: true }]}>
+                    <Select options={visionProviderOptions} />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item
+                    name={['model', 'visionBaseUrl']}
+                    label="MiniMax Token Plan VLM Endpoint"
+                    rules={[{ required: true }]}
+                  >
+                    <Input placeholder="https://api.minimax.io/v1/coding_plan/vlm" />
+                  </Form.Item>
+                </Col>
+              </Row>
+              <Row gutter={12}>
+                <Col span={16}>
+                  <Form.Item
+                    name={['model', 'visionApiKeyEnv']}
+                    label="Token Plan Key 环境变量"
+                    rules={[{ required: true }]}
+                  >
+                    <Input placeholder="MINIMAX_TOKEN_PLAN_API_KEY" />
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item label="图片密钥状态">
+                    <Tag color={modelConfig?.visionApiKeyConfigured ? 'green' : 'orange'}>
+                      {modelConfig?.visionApiKeyConfigured ? '已配置' : '未检测到'}
+                    </Tag>
+                  </Form.Item>
+                </Col>
+              </Row>
               <Row gutter={12}>
                 <Col span={8}>
                   <Form.Item name={['model', 'temperature']} label="温度">
