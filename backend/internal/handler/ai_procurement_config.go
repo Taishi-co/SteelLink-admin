@@ -26,18 +26,22 @@ type aiProcurementStageConfig struct {
 }
 
 type aiProcurementModelConfig struct {
-	ParsingEnabled      bool    `json:"parsingEnabled"`
-	Provider            string  `json:"provider"`
-	BaseURL             string  `json:"baseUrl"`
-	APIKeyEnv           string  `json:"apiKeyEnv"`
-	APIKeyConfigured    bool    `json:"apiKeyConfigured"`
-	Model               string  `json:"model"`
-	Temperature         float64 `json:"temperature"`
-	TopP                float64 `json:"topP"`
-	MaxTokens           int     `json:"maxTokens"`
-	TimeoutSec          int     `json:"timeoutSec"`
-	RetryCount          int     `json:"retryCount"`
-	ConfidenceThreshold float64 `json:"confidenceThreshold"`
+	ParsingEnabled         bool    `json:"parsingEnabled"`
+	Provider               string  `json:"provider"`
+	BaseURL                string  `json:"baseUrl"`
+	APIKeyEnv              string  `json:"apiKeyEnv"`
+	APIKeyConfigured       bool    `json:"apiKeyConfigured"`
+	VisionProvider         string  `json:"visionProvider"`
+	VisionBaseURL          string  `json:"visionBaseUrl"`
+	VisionAPIKeyEnv        string  `json:"visionApiKeyEnv"`
+	VisionAPIKeyConfigured bool    `json:"visionApiKeyConfigured"`
+	Model                  string  `json:"model"`
+	Temperature            float64 `json:"temperature"`
+	TopP                   float64 `json:"topP"`
+	MaxTokens              int     `json:"maxTokens"`
+	TimeoutSec             int     `json:"timeoutSec"`
+	RetryCount             int     `json:"retryCount"`
+	ConfidenceThreshold    float64 `json:"confidenceThreshold"`
 }
 
 type aiProcurementMatchingConfig struct {
@@ -218,6 +222,9 @@ func defaultAIProcurementConfig() aiProcurementConfig {
 			Provider:            "minimax",
 			BaseURL:             "https://api.minimax.io/v1/chat/completions",
 			APIKeyEnv:           "MINIMAX_API_KEY",
+			VisionProvider:      "minimax_token_plan",
+			VisionBaseURL:       "https://api.minimax.io/v1/coding_plan/vlm",
+			VisionAPIKeyEnv:     "MINIMAX_TOKEN_PLAN_API_KEY",
 			Model:               "MiniMax-M2.7",
 			Temperature:         0.2,
 			MaxTokens:           1200,
@@ -283,6 +290,18 @@ func normalizeAIProcurementConfig(config *aiProcurementConfig) {
 	if config.Model.APIKeyEnv == "" {
 		config.Model.APIKeyEnv = defaults.Model.APIKeyEnv
 	}
+	config.Model.VisionProvider = strings.TrimSpace(config.Model.VisionProvider)
+	if config.Model.VisionProvider == "" {
+		config.Model.VisionProvider = defaults.Model.VisionProvider
+	}
+	config.Model.VisionBaseURL = strings.TrimRight(strings.TrimSpace(config.Model.VisionBaseURL), "/")
+	if config.Model.VisionBaseURL == "" {
+		config.Model.VisionBaseURL = defaults.Model.VisionBaseURL
+	}
+	config.Model.VisionAPIKeyEnv = strings.TrimSpace(config.Model.VisionAPIKeyEnv)
+	if config.Model.VisionAPIKeyEnv == "" {
+		config.Model.VisionAPIKeyEnv = defaults.Model.VisionAPIKeyEnv
+	}
 	config.Model.Model = strings.TrimSpace(config.Model.Model)
 	if config.Model.Model == "" {
 		config.Model.Model = defaults.Model.Model
@@ -306,6 +325,7 @@ func normalizeAIProcurementConfig(config *aiProcurementConfig) {
 		config.Model.ConfidenceThreshold = defaults.Model.ConfidenceThreshold
 	}
 	config.Model.APIKeyConfigured = os.Getenv(config.Model.APIKeyEnv) != ""
+	config.Model.VisionAPIKeyConfigured = os.Getenv(config.Model.VisionAPIKeyEnv) != ""
 	if config.Matching.MaxRecommendations <= 0 {
 		config.Matching.MaxRecommendations = 5
 	}

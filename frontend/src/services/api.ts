@@ -636,6 +636,10 @@ export interface AIProcurementConfig {
     baseUrl: string
     apiKeyEnv: string
     apiKeyConfigured: boolean
+    visionProvider: string
+    visionBaseUrl: string
+    visionApiKeyEnv: string
+    visionApiKeyConfigured: boolean
     model: string
     temperature: number
     topP: number
