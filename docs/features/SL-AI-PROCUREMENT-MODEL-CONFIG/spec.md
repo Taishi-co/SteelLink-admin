@@ -28,7 +28,7 @@
 - 启用模型解析: 开启
 - 模型供应方: `minimax`
 - 模型名称: `MiniMax-M2.7`
-- Endpoint: `https://api.minimax.io/v1/chat/completions`
+- Endpoint: `https://api.minimaxi.com/anthropic`
 - API Key 环境变量: `MINIMAX_API_KEY`
 - 温度: `0.2`
 - Top P: `0.9`

@@ -219,7 +219,7 @@ export default function AIProcurementConfigPage() {
                 </Col>
               </Row>
               <Form.Item name={['model', 'baseUrl']} label="Chat Completions Endpoint" rules={[{ required: true }]}>
-                <Input placeholder="https://api.minimax.io/v1/chat/completions" />
+                <Input placeholder="https://api.minimaxi.com/anthropic" />
               </Form.Item>
               <Row gutter={12}>
                 <Col span={16}>
@@ -254,7 +254,7 @@ export default function AIProcurementConfigPage() {
                     label="MiniMax Token Plan VLM Endpoint"
                     rules={[{ required: true }]}
                   >
-                    <Input placeholder="https://api.minimax.io/v1/coding_plan/vlm" />
+                    <Input placeholder="https://api.minimaxi.com/v1/coding_plan/vlm" />
                   </Form.Item>
                 </Col>
               </Row>

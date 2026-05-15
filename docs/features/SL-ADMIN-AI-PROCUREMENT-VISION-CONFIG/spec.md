@@ -37,6 +37,7 @@
   - `model.visionBaseUrl`
   - `model.visionApiKeyEnv`
   - `model.visionApiKeyConfigured`
+- MiniMax Token Plan 默认 VLM endpoint 使用 `https://api.minimaxi.com/v1/coding_plan/vlm`。
 - 持久化位置:
   - MySQL `admin_system_configs.config_value`
   - Redis `ai_procurement_config`
