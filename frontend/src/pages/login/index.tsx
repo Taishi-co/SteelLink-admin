@@ -39,7 +39,7 @@ export default function Login() {
   return (
     <div className={styles.container}>
       <section className={styles.hero}>
-        <div className={styles.eyebrow}>SteelLink 运营平台</div>
+        <div className={styles.eyebrow}>RecoLink 运营平台</div>
         <h1 className={styles.title}>钢材交易的管理中枢，统一看板一屏掌控。</h1>
         <p className={styles.subtitle}>
           面向平台运营、商品审核、企业管理与系统配置的后台工作台。
@@ -61,7 +61,7 @@ export default function Login() {
         </div>
       </section>
       <Card className={styles.card} title="管理端登录">
-        <p className={styles.helper}>请输入管理员账号与密码，进入 SteelLink 平台运营后台。</p>
+        <p className={styles.helper}>请输入管理员账号与密码，进入 RecoLink 平台运营后台。</p>
         <Form
           name="login"
           initialValues={{ remember: true }}
