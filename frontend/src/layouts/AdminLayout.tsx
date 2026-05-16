@@ -266,7 +266,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <div className={styles.logo}>
           {collapsed ? 'SL' : (
             <div>
-              SteelLink
+              RecoLink
               <span className={styles.logoSub}>运营管理后台</span>
             </div>
           )}
