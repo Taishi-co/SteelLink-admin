@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -1723,6 +1724,16 @@ func ListOrders(c *gin.Context) {
 		where += " AND status = ?"
 		args = append(args, status)
 	}
+	if c.Query("intervention") == "1" {
+		interventionWhere := "status IN (10, 11, 24, 25)"
+		if tableExists(ctx, db, "breach_records") {
+			interventionWhere += " OR EXISTS (SELECT 1 FROM breach_records br WHERE br.order_id = orders.id AND br.deleted_at IS NULL AND br.status IN ('submitted', 'under_review', 'mediating', 'litigating'))"
+		}
+		if tableExists(ctx, db, "litigation_records") {
+			interventionWhere += " OR EXISTS (SELECT 1 FROM litigation_records lr WHERE lr.order_id = orders.id AND lr.deleted_at IS NULL AND lr.status IN ('filed', 'accepted', 'in_progress'))"
+		}
+		where += " AND (" + interventionWhere + ")"
+	}
 
 	countArgs := make([]any, len(args))
 	copy(countArgs, args)
@@ -1732,16 +1743,20 @@ func ListOrders(c *gin.Context) {
 		return
 	}
 
+	remarkExpr := "NULL"
+	if columnExists(ctx, db, "orders", "remark") {
+		remarkExpr = "remark"
+	}
 	queryArgs := append(args, limit, offset)
 	rows, err := db.QueryContext(ctx, fmt.Sprintf(`
 		SELECT id, order_no, buyer_id, COALESCE(buyer_name, ''), seller_id, COALESCE(seller_enterprise_id, 0),
 		       COALESCE(seller_name, ''), COALESCE(total_quantity, 0), COALESCE(total_amount, 0),
 		       COALESCE(tax_total_amount, 0), COALESCE(currency, 'CNY'), status,
-		       COALESCE(delivery_voucher, ''), COALESCE(receipt_voucher, ''), receipt_at, expires_at, created_at
+		       COALESCE(delivery_voucher, ''), COALESCE(receipt_voucher, ''), receipt_at, expires_at, created_at, %s
 		FROM orders
 		WHERE %s
 		ORDER BY id DESC
-		LIMIT ? OFFSET ?`, where), queryArgs...)
+		LIMIT ? OFFSET ?`, remarkExpr, where), queryArgs...)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 		return
@@ -1750,30 +1765,11 @@ func ListOrders(c *gin.Context) {
 
 	items := make([]orderItem, 0)
 	for rows.Next() {
-		var item orderItem
-		if err := rows.Scan(
-			&item.ID,
-			&item.OrderNo,
-			&item.BuyerID,
-			&item.BuyerName,
-			&item.SellerID,
-			&item.SellerEnterpriseID,
-			&item.SellerName,
-			&item.TotalQuantity,
-			&item.TotalAmount,
-			&item.TaxTotalAmount,
-			&item.Currency,
-			&item.Status,
-			&item.DeliveryVoucher,
-			&item.ReceiptVoucher,
-			&item.ReceiptAt,
-			&item.ExpiresAt,
-			&item.CreatedAt,
-		); err != nil {
+		item, err := scanOrder(rows)
+		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 			return
 		}
-		item.Timeline = buildOrderTimeline(item)
 		items = append(items, item)
 	}
 
@@ -1782,6 +1778,703 @@ func ListOrders(c *gin.Context) {
 		"message": "success",
 		"data":    pageResult[orderItem]{List: items, Total: total},
 	})
+}
+
+type sqlScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanOrder(scanner sqlScanner) (orderItem, error) {
+	var item orderItem
+	var rawRemark sql.NullString
+	err := scanner.Scan(
+		&item.ID,
+		&item.OrderNo,
+		&item.BuyerID,
+		&item.BuyerName,
+		&item.SellerID,
+		&item.SellerEnterpriseID,
+		&item.SellerName,
+		&item.TotalQuantity,
+		&item.TotalAmount,
+		&item.TaxTotalAmount,
+		&item.Currency,
+		&item.Status,
+		&item.DeliveryVoucher,
+		&item.ReceiptVoucher,
+		&item.ReceiptAt,
+		&item.ExpiresAt,
+		&item.CreatedAt,
+		&rawRemark,
+	)
+	if err != nil {
+		return item, err
+	}
+	item.Remark = parseJSONMap(rawRemark)
+	item.Timeline = buildOrderTimeline(item)
+	return item, nil
+}
+
+// GetOrder returns one order with fulfillment and operation detail.
+func GetOrder(c *gin.Context) {
+	db := database.GetDB()
+	if db == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"code": 503, "message": "database unavailable"})
+		return
+	}
+
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid order id"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	remarkExpr := "NULL"
+	if columnExists(ctx, db, "orders", "remark") {
+		remarkExpr = "remark"
+	}
+	row := db.QueryRowContext(ctx, fmt.Sprintf(`
+		SELECT id, order_no, buyer_id, COALESCE(buyer_name, ''), seller_id, COALESCE(seller_enterprise_id, 0),
+		       COALESCE(seller_name, ''), COALESCE(total_quantity, 0), COALESCE(total_amount, 0),
+		       COALESCE(tax_total_amount, 0), COALESCE(currency, 'CNY'), status,
+		       COALESCE(delivery_voucher, ''), COALESCE(receipt_voucher, ''), receipt_at, expires_at, created_at, %s
+		FROM orders
+		WHERE deleted_at IS NULL AND id = ?
+		LIMIT 1`, remarkExpr), id)
+
+	item, err := scanOrder(row)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "order not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+	if err := fillOrderDetail(ctx, db, &item); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": item})
+}
+
+func fillOrderDetail(ctx context.Context, db *sql.DB, item *orderItem) error {
+	if tableExists(ctx, db, "order_events") {
+		events, err := listOrderEvents(ctx, db, item.ID)
+		if err != nil {
+			return err
+		}
+		item.Events = events
+	}
+	if tableExists(ctx, db, "order_financing_requests") {
+		info, err := getOrderFinancingInfo(ctx, db, item.ID)
+		if err != nil {
+			return err
+		}
+		item.FinancingInfo = info
+	}
+	if tableExists(ctx, db, "logistics_biddings") {
+		info, err := getLogisticsBiddingInfo(ctx, db, item.ID)
+		if err != nil {
+			return err
+		}
+		item.LogisticsBidding = info
+	}
+	if tableExists(ctx, db, "logistics_bid_quotes") {
+		quotes, err := listLogisticsQuotes(ctx, db, item.ID)
+		if err != nil {
+			return err
+		}
+		item.LogisticsQuotes = quotes
+	}
+	if tableExists(ctx, db, "shipment_tasks") {
+		task, err := getShipmentTaskInfo(ctx, db, item.ID)
+		if err != nil {
+			return err
+		}
+		item.ShipmentTask = task
+	}
+	if tableExists(ctx, db, "pledge_release_events") {
+		events, err := listPledgeEvents(ctx, db, item.ID)
+		if err != nil {
+			return err
+		}
+		item.PledgeEvents = events
+	}
+	if tableExists(ctx, db, "breach_records") {
+		records, err := listBreachRecords(ctx, db, item.ID)
+		if err != nil {
+			return err
+		}
+		item.BreachRecords = records
+	}
+	if tableExists(ctx, db, "litigation_records") {
+		records, err := listLitigationRecords(ctx, db, item.ID)
+		if err != nil {
+			return err
+		}
+		item.LitigationRecords = records
+	}
+	return nil
+}
+
+func listOrderEvents(ctx context.Context, db *sql.DB, orderID int64) ([]orderEventItem, error) {
+	rows, err := db.QueryContext(ctx, `
+		SELECT id, order_id, COALESCE(order_no, ''), event_type, COALESCE(actor_user_id, 0),
+		       COALESCE(actor_enterprise_id, 0), COALESCE(actor_service, ''), COALESCE(from_status, 0),
+		       COALESCE(to_status, 0), payload, created_at
+		FROM order_events
+		WHERE order_id = ?
+		ORDER BY id DESC
+		LIMIT 80`, orderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]orderEventItem, 0)
+	for rows.Next() {
+		var item orderEventItem
+		var payload sql.NullString
+		if err := rows.Scan(&item.ID, &item.OrderID, &item.OrderNo, &item.EventType, &item.ActorUserID, &item.ActorEnterpriseID, &item.ActorService, &item.FromStatus, &item.ToStatus, &payload, &item.CreatedAt); err != nil {
+			return nil, err
+		}
+		item.Payload = parseJSONMap(payload)
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func getOrderFinancingInfo(ctx context.Context, db *sql.DB, orderID int64) (map[string]any, error) {
+	row := db.QueryRowContext(ctx, `
+		SELECT id, status, COALESCE(risk_result, ''), COALESCE(risk_remark, ''), COALESCE(approved_amount, 0),
+		       COALESCE(requested_amount, 0), COALESCE(funding_enterprise_id, 0), COALESCE(disbursement_voucher, ''),
+		       COALESCE(pledge_voucher_url, ''), COALESCE(commission_voucher, ''), COALESCE(debt_contract_url, ''),
+		       COALESCE(pledge_remark, ''), created_at, updated_at
+		FROM order_financing_requests
+		WHERE order_id = ?
+		ORDER BY id DESC
+		LIMIT 1`, orderID)
+	var id, fundingEnterpriseID int64
+	var status, riskResult, riskRemark, disbursementVoucher, pledgeVoucherURL, commissionVoucher, debtContractURL, pledgeRemark string
+	var approvedAmount, requestedAmount float64
+	var createdAt, updatedAt time.Time
+	if err := row.Scan(&id, &status, &riskResult, &riskRemark, &approvedAmount, &requestedAmount, &fundingEnterpriseID, &disbursementVoucher, &pledgeVoucherURL, &commissionVoucher, &debtContractURL, &pledgeRemark, &createdAt, &updatedAt); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return map[string]any{
+		"id": id, "status": status, "risk_result": riskResult, "riskRemark": riskRemark,
+		"approved_amount": approvedAmount, "approvedAmount": approvedAmount,
+		"requested_amount": requestedAmount, "requestedAmount": requestedAmount,
+		"funding_enterprise_id": fundingEnterpriseID, "fundingEnterpriseId": fundingEnterpriseID,
+		"disbursement_voucher": disbursementVoucher, "disbursementVoucher": disbursementVoucher,
+		"pledge_voucher_url": pledgeVoucherURL, "pledgeVoucherUrl": pledgeVoucherURL,
+		"commission_voucher": commissionVoucher, "commissionVoucher": commissionVoucher,
+		"debt_contract_url": debtContractURL, "debtContractUrl": debtContractURL,
+		"pledge_remark": pledgeRemark, "pledgeRemark": pledgeRemark,
+		"createdAt": createdAt, "updatedAt": updatedAt,
+	}, nil
+}
+
+func getLogisticsBiddingInfo(ctx context.Context, db *sql.DB, orderID int64) (map[string]any, error) {
+	row := db.QueryRowContext(ctx, `
+		SELECT id, status, COALESCE(freight_payer, ''), COALESCE(selected_quote_id, 0),
+		       COALESCE(pickup_address, ''), COALESCE(destination_address, ''), COALESCE(requirement, ''),
+		       COALESCE(initiator_role, ''), COALESCE(responder_confirmed, 0), created_at, updated_at
+		FROM logistics_biddings
+		WHERE order_id = ?
+		ORDER BY id DESC
+		LIMIT 1`, orderID)
+	var id, selectedQuoteID int64
+	var responderConfirmed bool
+	var status, freightPayer, pickupAddress, destinationAddress, requirement, initiatorRole string
+	var createdAt, updatedAt time.Time
+	if err := row.Scan(&id, &status, &freightPayer, &selectedQuoteID, &pickupAddress, &destinationAddress, &requirement, &initiatorRole, &responderConfirmed, &createdAt, &updatedAt); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return map[string]any{
+		"id": id, "status": status, "freight_payer": freightPayer, "freightPayer": freightPayer,
+		"selected_quote_id": selectedQuoteID, "selectedQuoteId": selectedQuoteID,
+		"pickup_address": pickupAddress, "pickupAddress": pickupAddress,
+		"destination_address": destinationAddress, "destinationAddress": destinationAddress,
+		"requirement": requirement, "initiator_role": initiatorRole, "initiatorRole": initiatorRole,
+		"responder_confirmed": responderConfirmed, "responderConfirmed": responderConfirmed,
+		"createdAt": createdAt, "updatedAt": updatedAt,
+	}, nil
+}
+
+func listLogisticsQuotes(ctx context.Context, db *sql.DB, orderID int64) ([]map[string]any, error) {
+	rows, err := db.QueryContext(ctx, `
+		SELECT id, COALESCE(logistics_name, ''), COALESCE(logistics_enterprise_id, 0), COALESCE(amount, 0),
+		       COALESCE(vehicle_info, ''), COALESCE(driver_info, ''), COALESCE(estimated_pickup_at, ''),
+		       COALESCE(estimated_delivery_at, ''), COALESCE(remark, ''), created_at
+		FROM logistics_bid_quotes
+		WHERE order_id = ?
+		ORDER BY id DESC`, orderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]map[string]any, 0)
+	for rows.Next() {
+		var id, logisticsEnterpriseID int64
+		var logisticsName, vehicleInfo, driverInfo, estimatedPickupAt, estimatedDeliveryAt, remark string
+		var amount float64
+		var createdAt time.Time
+		if err := rows.Scan(&id, &logisticsName, &logisticsEnterpriseID, &amount, &vehicleInfo, &driverInfo, &estimatedPickupAt, &estimatedDeliveryAt, &remark, &createdAt); err != nil {
+			return nil, err
+		}
+		items = append(items, map[string]any{
+			"id": id, "logistics_name": logisticsName, "logisticsName": logisticsName,
+			"logistics_enterprise_id": logisticsEnterpriseID, "logisticsEnterpriseId": logisticsEnterpriseID,
+			"amount": amount, "vehicle_info": vehicleInfo, "vehicleInfo": vehicleInfo,
+			"driver_info": driverInfo, "driverInfo": driverInfo,
+			"estimated_pickup_at": estimatedPickupAt, "estimatedPickupAt": estimatedPickupAt,
+			"estimated_delivery_at": estimatedDeliveryAt, "estimatedDeliveryAt": estimatedDeliveryAt,
+			"remark": remark, "createdAt": createdAt,
+		})
+	}
+	return items, rows.Err()
+}
+
+func getShipmentTaskInfo(ctx context.Context, db *sql.DB, orderID int64) (map[string]any, error) {
+	row := db.QueryRowContext(ctx, `
+		SELECT id, status, COALESCE(logistics_enterprise_id, 0), COALESCE(logistics_quote_id, 0),
+		       COALESCE(pickup_voucher, ''), COALESCE(delivery_voucher, ''), COALESCE(signature_voucher, ''),
+		       picked_up_at, delivered_at, signed_at, created_at, updated_at
+		FROM shipment_tasks
+		WHERE order_id = ?
+		ORDER BY id DESC
+		LIMIT 1`, orderID)
+	var id, logisticsEnterpriseID, logisticsQuoteID int64
+	var status, pickupVoucher, deliveryVoucher, signatureVoucher string
+	var pickedUpAt, deliveredAt, signedAt sql.NullTime
+	var createdAt, updatedAt time.Time
+	if err := row.Scan(&id, &status, &logisticsEnterpriseID, &logisticsQuoteID, &pickupVoucher, &deliveryVoucher, &signatureVoucher, &pickedUpAt, &deliveredAt, &signedAt, &createdAt, &updatedAt); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return map[string]any{
+		"id": id, "status": status,
+		"logistics_enterprise_id": logisticsEnterpriseID, "logisticsEnterpriseId": logisticsEnterpriseID,
+		"logistics_quote_id": logisticsQuoteID, "logisticsQuoteId": logisticsQuoteID,
+		"pickup_voucher": pickupVoucher, "pickupVoucher": pickupVoucher,
+		"delivery_voucher": deliveryVoucher, "deliveryVoucher": deliveryVoucher,
+		"signature_voucher": signatureVoucher, "signatureVoucher": signatureVoucher,
+		"pickedUpAt": nullTimeValue(pickedUpAt), "deliveredAt": nullTimeValue(deliveredAt), "signedAt": nullTimeValue(signedAt),
+		"createdAt": createdAt, "updatedAt": updatedAt,
+	}, nil
+}
+
+func listPledgeEvents(ctx context.Context, db *sql.DB, orderID int64) ([]map[string]any, error) {
+	rows, err := db.QueryContext(ctx, `
+		SELECT id, financing_request_id, event_type, COALESCE(voucher_url, ''), COALESCE(reason, ''),
+		       COALESCE(pledge_release_events.condition, ''), created_at
+		FROM pledge_release_events
+		WHERE order_id = ?
+		ORDER BY id DESC`, orderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]map[string]any, 0)
+	for rows.Next() {
+		var id, financingRequestID int64
+		var eventType, voucherURL, reason, condition string
+		var createdAt time.Time
+		if err := rows.Scan(&id, &financingRequestID, &eventType, &voucherURL, &reason, &condition, &createdAt); err != nil {
+			return nil, err
+		}
+		items = append(items, map[string]any{
+			"id": id, "financing_request_id": financingRequestID, "financingRequestId": financingRequestID,
+			"event_type": eventType, "eventType": eventType, "voucher_url": voucherURL, "voucherUrl": voucherURL,
+			"reason": reason, "condition": condition, "created_at": createdAt, "createdAt": createdAt,
+		})
+	}
+	return items, rows.Err()
+}
+
+func listBreachRecords(ctx context.Context, db *sql.DB, orderID int64) ([]breachRecordItem, error) {
+	rows, err := db.QueryContext(ctx, `
+		SELECT id, order_id, COALESCE(order_no, ''), COALESCE(reporter_enterprise_id, 0), COALESCE(breach_party, ''),
+		       COALESCE(breach_enterprise_id, 0), COALESCE(breach_type, ''), COALESCE(description, ''),
+		       evidence_urls, COALESCE(status, ''), COALESCE(mediation_result, ''), COALESCE(mediated_by, 0),
+		       mediated_at, COALESCE(resolution_result, ''), COALESCE(resolved_by, 0), resolved_at, created_at, updated_at
+		FROM breach_records
+		WHERE order_id = ? AND deleted_at IS NULL
+		ORDER BY id DESC`, orderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]breachRecordItem, 0)
+	for rows.Next() {
+		var item breachRecordItem
+		var evidence sql.NullString
+		if err := rows.Scan(&item.ID, &item.OrderID, &item.OrderNo, &item.ReporterEnterpriseID, &item.BreachParty, &item.BreachEnterpriseID, &item.BreachType, &item.Description, &evidence, &item.Status, &item.MediationResult, &item.MediatedBy, &item.MediatedAt, &item.ResolutionResult, &item.ResolvedBy, &item.ResolvedAt, &item.CreatedAt, &item.UpdatedAt); err != nil {
+			return nil, err
+		}
+		item.EvidenceURLs = parseStringList(evidence)
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func listLitigationRecords(ctx context.Context, db *sql.DB, orderID int64) ([]litigationItem, error) {
+	rows, err := db.QueryContext(ctx, `
+		SELECT id, breach_record_id, order_id, COALESCE(order_no, ''), COALESCE(plaintiff_enterprise_id, 0),
+		       COALESCE(defendant_enterprise_id, 0), COALESCE(case_no, ''), COALESCE(court, ''),
+		       COALESCE(claim_amount, 0), COALESCE(description, ''), evidence_urls, COALESCE(status, ''),
+		       COALESCE(judgment_result, ''), COALESCE(judgment_url, ''), judged_at, closed_at, created_at, updated_at
+		FROM litigation_records
+		WHERE order_id = ? AND deleted_at IS NULL
+		ORDER BY id DESC`, orderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]litigationItem, 0)
+	for rows.Next() {
+		var item litigationItem
+		var evidence sql.NullString
+		if err := rows.Scan(&item.ID, &item.BreachRecordID, &item.OrderID, &item.OrderNo, &item.PlaintiffEnterpriseID, &item.DefendantEnterpriseID, &item.CaseNo, &item.Court, &item.ClaimAmount, &item.Description, &evidence, &item.Status, &item.JudgmentResult, &item.JudgmentURL, &item.JudgedAt, &item.ClosedAt, &item.CreatedAt, &item.UpdatedAt); err != nil {
+			return nil, err
+		}
+		item.EvidenceURLs = parseStringList(evidence)
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func nullTimeValue(value sql.NullTime) any {
+	if value.Valid {
+		return value.Time
+	}
+	return nil
+}
+
+type orderFreezeRequest struct {
+	Reason string `json:"reason" binding:"required"`
+}
+
+type breachActionRequest struct {
+	Result string `json:"result" binding:"required"`
+}
+
+type litigationStatusRequest struct {
+	Status         string  `json:"status" binding:"required"`
+	JudgmentResult string  `json:"judgmentResult"`
+	JudgmentURL    string  `json:"judgmentUrl"`
+	ClaimAmount    float64 `json:"claimAmount"`
+}
+
+func currentAdminID(c *gin.Context) int64 {
+	adminID, _ := c.Get("admin_id")
+	switch v := adminID.(type) {
+	case int64:
+		return v
+	case int:
+		return int64(v)
+	case float64:
+		return int64(v)
+	default:
+		return 0
+	}
+}
+
+func insertOrderEvent(ctx context.Context, db *sql.DB, orderID int64, orderNo string, eventType string, adminID int64, fromStatus, toStatus int, payload map[string]any) error {
+	if !tableExists(ctx, db, "order_events") {
+		return nil
+	}
+	var rawPayload any
+	if payload != nil {
+		bytes, err := json.Marshal(payload)
+		if err != nil {
+			return err
+		}
+		rawPayload = string(bytes)
+	}
+	_, err := db.ExecContext(ctx, `
+		INSERT INTO order_events (order_id, order_no, event_type, actor_user_id, actor_enterprise_id, actor_service, from_status, to_status, payload, created_at)
+		VALUES (?, ?, ?, ?, 0, 'admin', ?, ?, ?, NOW())`,
+		orderID, orderNo, eventType, adminID, fromStatus, toStatus, rawPayload)
+	return err
+}
+
+func getOrderStatusForAction(ctx context.Context, db *sql.DB, orderID int64) (string, int, error) {
+	var orderNo string
+	var status int
+	err := db.QueryRowContext(ctx, `SELECT order_no, status FROM orders WHERE deleted_at IS NULL AND id = ? LIMIT 1`, orderID).Scan(&orderNo, &status)
+	return orderNo, status, err
+}
+
+// FreezeOrder freezes an order for platform operation intervention.
+func FreezeOrder(c *gin.Context) {
+	db := database.GetDB()
+	if db == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"code": 503, "message": "database unavailable"})
+		return
+	}
+	orderID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || orderID <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid order id"})
+		return
+	}
+	var req orderFreezeRequest
+	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.Reason) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "freeze reason is required"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+	orderNo, fromStatus, err := getOrderStatusForAction(ctx, db, orderID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "order not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+	if fromStatus == 10 {
+		c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": true})
+		return
+	}
+	if _, err := db.ExecContext(ctx, `UPDATE orders SET status = 10, updated_at = NOW() WHERE id = ?`, orderID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+	payload := map[string]any{"reason": strings.TrimSpace(req.Reason), "from_status": fromStatus}
+	if err := insertOrderEvent(ctx, db, orderID, orderNo, "order_frozen", currentAdminID(c), fromStatus, 10, payload); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+	logOpFromContext(c, db, "order", "freeze", 0, req.Reason)
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": true})
+}
+
+// UnfreezeOrder restores an order to its status before the latest freeze event when possible.
+func UnfreezeOrder(c *gin.Context) {
+	db := database.GetDB()
+	if db == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"code": 503, "message": "database unavailable"})
+		return
+	}
+	orderID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || orderID <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid order id"})
+		return
+	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+	orderNo, fromStatus, err := getOrderStatusForAction(ctx, db, orderID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "order not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+	targetStatus := 11
+	if tableExists(ctx, db, "order_events") {
+		var payload sql.NullString
+		if err := db.QueryRowContext(ctx, `SELECT payload FROM order_events WHERE order_id = ? AND event_type = 'order_frozen' ORDER BY id DESC LIMIT 1`, orderID).Scan(&payload); err == nil {
+			if parsed := parseJSONMap(payload); parsed != nil {
+				switch value := parsed["from_status"].(type) {
+				case float64:
+					targetStatus = int(value)
+				case int:
+					targetStatus = value
+				}
+			}
+		}
+	}
+	if targetStatus == 10 {
+		targetStatus = 11
+	}
+	if _, err := db.ExecContext(ctx, `UPDATE orders SET status = ?, updated_at = NOW() WHERE id = ?`, targetStatus, orderID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+	if err := insertOrderEvent(ctx, db, orderID, orderNo, "order_unfrozen", currentAdminID(c), fromStatus, targetStatus, map[string]any{"restored_status": targetStatus}); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+	logOpFromContext(c, db, "order", "unfreeze", 0)
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": true})
+}
+
+// MediateBreach records platform mediation for a breach report.
+func MediateBreach(c *gin.Context) {
+	updateBreachRecord(c, "mediate")
+}
+
+// ResolveBreach records the final platform handling result for a breach report.
+func ResolveBreach(c *gin.Context) {
+	updateBreachRecord(c, "resolve")
+}
+
+func updateBreachRecord(c *gin.Context, action string) {
+	db := database.GetDB()
+	if db == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"code": 503, "message": "database unavailable"})
+		return
+	}
+	if !tableExists(c.Request.Context(), db, "breach_records") {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "breach_records table not found"})
+		return
+	}
+	breachID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || breachID <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid breach id"})
+		return
+	}
+	var req breachActionRequest
+	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.Result) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "result is required"})
+		return
+	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	var orderID int64
+	var orderNo string
+	var orderStatus int
+	if err := db.QueryRowContext(ctx, `
+		SELECT br.order_id, COALESCE(br.order_no, ''), o.status
+		FROM breach_records br
+		JOIN orders o ON o.id = br.order_id
+		WHERE br.id = ? AND br.deleted_at IS NULL
+		LIMIT 1`, breachID).Scan(&orderID, &orderNo, &orderStatus); err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "breach record not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+
+	adminID := currentAdminID(c)
+	eventType := "breach_mediation_started"
+	status := "mediating"
+	query := `UPDATE breach_records SET status = ?, mediation_result = ?, mediated_by = ?, mediated_at = NOW(), updated_by = ?, updated_at = NOW() WHERE id = ?`
+	args := []any{status, strings.TrimSpace(req.Result), adminID, adminID, breachID}
+	if action == "resolve" {
+		eventType = "breach_resolved"
+		status = "resolved"
+		query = `UPDATE breach_records SET status = ?, resolution_result = ?, resolved_by = ?, resolved_at = NOW(), updated_by = ?, updated_at = NOW() WHERE id = ?`
+		args = []any{status, strings.TrimSpace(req.Result), adminID, adminID, breachID}
+	}
+	if _, err := db.ExecContext(ctx, query, args...); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+	if action == "resolve" && orderStatus == 11 {
+		_, _ = db.ExecContext(ctx, `UPDATE orders SET status = 8, updated_at = NOW() WHERE id = ?`, orderID)
+	}
+	if err := insertOrderEvent(ctx, db, orderID, orderNo, eventType, adminID, orderStatus, orderStatus, map[string]any{"breach_record_id": breachID, "result": strings.TrimSpace(req.Result)}); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+	logOpFromContext(c, db, "order", "breach_"+action, 0, req.Result)
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": true})
+}
+
+// UpdateLitigationStatus updates platform litigation tracking status.
+func UpdateLitigationStatus(c *gin.Context) {
+	db := database.GetDB()
+	if db == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"code": 503, "message": "database unavailable"})
+		return
+	}
+	if !tableExists(c.Request.Context(), db, "litigation_records") {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "litigation_records table not found"})
+		return
+	}
+	litigationID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || litigationID <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid litigation id"})
+		return
+	}
+	var req litigationStatusRequest
+	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.Status) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "litigation status is required"})
+		return
+	}
+	allowed := map[string]bool{"filed": true, "accepted": true, "in_progress": true, "judged": true, "closed": true}
+	if !allowed[req.Status] {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid litigation status"})
+		return
+	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	var orderID int64
+	var orderNo string
+	var orderStatus int
+	if err := db.QueryRowContext(ctx, `
+		SELECT lr.order_id, COALESCE(lr.order_no, ''), o.status
+		FROM litigation_records lr
+		JOIN orders o ON o.id = lr.order_id
+		WHERE lr.id = ? AND lr.deleted_at IS NULL
+		LIMIT 1`, litigationID).Scan(&orderID, &orderNo, &orderStatus); err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "litigation record not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+
+	setParts := []string{"status = ?", "updated_by = ?", "updated_at = NOW()"}
+	args := []any{req.Status, currentAdminID(c)}
+	if req.JudgmentResult != "" {
+		setParts = append(setParts, "judgment_result = ?")
+		args = append(args, req.JudgmentResult)
+	}
+	if req.JudgmentURL != "" {
+		setParts = append(setParts, "judgment_url = ?")
+		args = append(args, req.JudgmentURL)
+	}
+	if req.ClaimAmount > 0 {
+		setParts = append(setParts, "claim_amount = ?")
+		args = append(args, req.ClaimAmount)
+	}
+	if req.Status == "judged" {
+		setParts = append(setParts, "judged_at = COALESCE(judged_at, NOW())")
+	}
+	if req.Status == "closed" {
+		setParts = append(setParts, "closed_at = COALESCE(closed_at, NOW())")
+	}
+	args = append(args, litigationID)
+	if _, err := db.ExecContext(ctx, fmt.Sprintf(`UPDATE litigation_records SET %s WHERE id = ?`, strings.Join(setParts, ", ")), args...); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+	if err := insertOrderEvent(ctx, db, orderID, orderNo, "litigation_status_updated", currentAdminID(c), orderStatus, orderStatus, map[string]any{"litigation_record_id": litigationID, "status": req.Status}); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+	logOpFromContext(c, db, "order", "litigation_update", 0, req.Status)
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": true})
 }
 
 func buildOrderTimeline(order orderItem) []orderTimelineItem {
