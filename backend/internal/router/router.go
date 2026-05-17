@@ -60,6 +60,12 @@ func RegisterRoutes(r *gin.Engine) {
 			protected.GET("/finance-services", handler.ListFinanceServiceOffers)
 			protected.PUT("/finance-services/:id/audit", handler.AuditFinanceServiceOffer)
 			protected.GET("/orders", handler.ListOrders)
+			protected.GET("/orders/:id", handler.GetOrder)
+			protected.POST("/orders/:id/freeze", handler.FreezeOrder)
+			protected.POST("/orders/:id/unfreeze", handler.UnfreezeOrder)
+			protected.POST("/orders/breach-records/:id/mediate", handler.MediateBreach)
+			protected.POST("/orders/breach-records/:id/resolve", handler.ResolveBreach)
+			protected.PUT("/orders/litigation-records/:id", handler.UpdateLitigationStatus)
 			protected.GET("/product-categories", handler.ListProductCategories)
 			protected.GET("/operation-logs", handler.ListOperationLogs)
 

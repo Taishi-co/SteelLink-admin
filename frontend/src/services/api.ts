@@ -27,6 +27,7 @@ export interface PageParams {
   subCategory?: string
   goodsType?: string
   warehouseServiceId?: number
+  intervention?: number
 }
 
 export interface PageResult<T> {
@@ -438,6 +439,10 @@ export interface OrderItem {
   pledgeEvents?: PledgeEventInfo[]
   pledge_events?: PledgeEventInfo[]
   events?: OrderEventItem[]
+  breachRecords?: BreachRecordInfo[]
+  breach_records?: BreachRecordInfo[]
+  litigationRecords?: LitigationRecordInfo[]
+  litigation_records?: LitigationRecordInfo[]
 }
 
 export interface OrderTimelineItem {
@@ -543,9 +548,56 @@ export interface OrderEventItem {
   createdAt?: string
 }
 
+export interface BreachRecordInfo {
+  id: number
+  orderId: number
+  orderNo?: string
+  reporterEnterpriseId: number
+  breachParty: string
+  breachEnterpriseId: number
+  breachType: string
+  description: string
+  evidenceUrls?: string[]
+  status: string
+  mediationResult?: string
+  mediatedBy?: number
+  mediatedAt?: string
+  resolutionResult?: string
+  resolvedBy?: number
+  resolvedAt?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface LitigationRecordInfo {
+  id: number
+  breachRecordId: number
+  orderId: number
+  orderNo?: string
+  plaintiffEnterpriseId: number
+  defendantEnterpriseId: number
+  caseNo?: string
+  court?: string
+  claimAmount: number
+  description: string
+  evidenceUrls?: string[]
+  status: string
+  judgmentResult?: string
+  judgmentUrl?: string
+  judgedAt?: string
+  closedAt?: string
+  createdAt: string
+  updatedAt: string
+}
+
 export const orderApi = {
   list: (params: PageParams) => get<PageResult<OrderItem>>('/orders', { params }),
   detail: (id: number) => get<OrderItem>(`/orders/${id}`),
+  freeze: (id: number, reason: string) => post(`/orders/${id}/freeze`, { reason }),
+  unfreeze: (id: number) => post(`/orders/${id}/unfreeze`),
+  mediateBreach: (id: number, result: string) => post(`/orders/breach-records/${id}/mediate`, { result }),
+  resolveBreach: (id: number, result: string) => post(`/orders/breach-records/${id}/resolve`, { result }),
+  updateLitigation: (id: number, data: { status: string; judgmentResult?: string; judgmentUrl?: string; claimAmount?: number }) => put(`/orders/litigation-records/${id}`, data),
 }
 
 // Product Category API

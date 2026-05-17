@@ -157,6 +157,15 @@ type orderItem struct {
 	ExpiresAt          *time.Time          `json:"expiresAt,omitempty"`
 	CreatedAt          time.Time           `json:"createdAt"`
 	Timeline           []orderTimelineItem `json:"timeline"`
+	Remark             map[string]any      `json:"remark,omitempty"`
+	Events             []orderEventItem    `json:"events,omitempty"`
+	FinancingInfo      map[string]any      `json:"financingInfo,omitempty"`
+	LogisticsBidding   map[string]any      `json:"logisticsBidding,omitempty"`
+	LogisticsQuotes    []map[string]any    `json:"logisticsQuotes,omitempty"`
+	ShipmentTask       map[string]any      `json:"shipmentTask,omitempty"`
+	PledgeEvents       []map[string]any    `json:"pledgeEvents,omitempty"`
+	BreachRecords      []breachRecordItem  `json:"breachRecords,omitempty"`
+	LitigationRecords  []litigationItem    `json:"litigationRecords,omitempty"`
 }
 
 type orderTimelineItem struct {
@@ -165,6 +174,62 @@ type orderTimelineItem struct {
 	Status      string     `json:"status"`
 	Time        *time.Time `json:"time,omitempty"`
 	Description string     `json:"description,omitempty"`
+}
+
+type orderEventItem struct {
+	ID                int64          `json:"id"`
+	OrderID           int64          `json:"orderId"`
+	OrderNo           string         `json:"orderNo,omitempty"`
+	EventType         string         `json:"eventType"`
+	ActorUserID       int64          `json:"actorUserId"`
+	ActorEnterpriseID int64          `json:"actorEnterpriseId"`
+	ActorService      string         `json:"actorService,omitempty"`
+	FromStatus        int            `json:"fromStatus"`
+	ToStatus          int            `json:"toStatus"`
+	Payload           map[string]any `json:"payload,omitempty"`
+	CreatedAt         time.Time      `json:"createdAt"`
+}
+
+type breachRecordItem struct {
+	ID                   int64      `json:"id"`
+	OrderID              int64      `json:"orderId"`
+	OrderNo              string     `json:"orderNo,omitempty"`
+	ReporterEnterpriseID int64      `json:"reporterEnterpriseId"`
+	BreachParty          string     `json:"breachParty"`
+	BreachEnterpriseID   int64      `json:"breachEnterpriseId"`
+	BreachType           string     `json:"breachType"`
+	Description          string     `json:"description"`
+	EvidenceURLs         []string   `json:"evidenceUrls,omitempty"`
+	Status               string     `json:"status"`
+	MediationResult      string     `json:"mediationResult,omitempty"`
+	MediatedBy           int64      `json:"mediatedBy,omitempty"`
+	MediatedAt           *time.Time `json:"mediatedAt,omitempty"`
+	ResolutionResult     string     `json:"resolutionResult,omitempty"`
+	ResolvedBy           int64      `json:"resolvedBy,omitempty"`
+	ResolvedAt           *time.Time `json:"resolvedAt,omitempty"`
+	CreatedAt            time.Time  `json:"createdAt"`
+	UpdatedAt            time.Time  `json:"updatedAt"`
+}
+
+type litigationItem struct {
+	ID                    int64      `json:"id"`
+	BreachRecordID        int64      `json:"breachRecordId"`
+	OrderID               int64      `json:"orderId"`
+	OrderNo               string     `json:"orderNo,omitempty"`
+	PlaintiffEnterpriseID int64      `json:"plaintiffEnterpriseId"`
+	DefendantEnterpriseID int64      `json:"defendantEnterpriseId"`
+	CaseNo                string     `json:"caseNo,omitempty"`
+	Court                 string     `json:"court,omitempty"`
+	ClaimAmount           float64    `json:"claimAmount"`
+	Description           string     `json:"description"`
+	EvidenceURLs          []string   `json:"evidenceUrls,omitempty"`
+	Status                string     `json:"status"`
+	JudgmentResult        string     `json:"judgmentResult,omitempty"`
+	JudgmentURL           string     `json:"judgmentUrl,omitempty"`
+	JudgedAt              *time.Time `json:"judgedAt,omitempty"`
+	ClosedAt              *time.Time `json:"closedAt,omitempty"`
+	CreatedAt             time.Time  `json:"createdAt"`
+	UpdatedAt             time.Time  `json:"updatedAt"`
 }
 
 type categoryItem struct {
@@ -438,6 +503,24 @@ func parseImages(raw sql.NullString) []string {
 	var images []string
 	_ = json.Unmarshal([]byte(raw.String), &images)
 	return images
+}
+
+func parseStringList(raw sql.NullString) []string {
+	if !raw.Valid || raw.String == "" {
+		return nil
+	}
+	var values []string
+	_ = json.Unmarshal([]byte(raw.String), &values)
+	return values
+}
+
+func parseJSONMap(raw sql.NullString) map[string]any {
+	if !raw.Valid || raw.String == "" {
+		return nil
+	}
+	var value map[string]any
+	_ = json.Unmarshal([]byte(raw.String), &value)
+	return value
 }
 
 var localAdminStore = struct {
