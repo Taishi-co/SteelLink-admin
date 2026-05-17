@@ -30,6 +30,37 @@ a {
   color: inherit;
 }
 
+.ant-table-wrapper {
+  max-width: 100%;
+}
+
+.ant-table-container,
+.ant-table-content,
+.ant-table-body {
+  max-width: 100%;
+}
+
+.ant-table-thead > tr > th {
+  line-height: 1.35;
+  white-space: normal;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+
+.ant-table-thead > tr > th .ant-table-column-title {
+  display: inline-block;
+  max-width: 100%;
+  white-space: normal;
+}
+
+.ant-table-tbody > tr > td {
+  vertical-align: middle;
+}
+
+.ant-table-cell {
+  overflow-wrap: anywhere;
+}
+
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
