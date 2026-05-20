@@ -4,6 +4,8 @@ import type { ColumnsType } from 'antd/es/table'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { fileApi, userApi, UserItem, PageParams } from '../../services/api'
 import { formatDateTime } from '../../utils/format'
+import { canAudit, canOperate } from '../../utils/permissions'
+import { useAuthStore } from '../../store/useAuthStore'
 import { SearchOutlined, EyeOutlined, CheckCircleOutlined, CloseCircleOutlined, IdcardOutlined } from '@ant-design/icons'
 
 const identityStatusMap: Record<number, { color: string; text: string }> = {
@@ -20,6 +22,9 @@ export default function UserList() {
   const [auditModal, setAuditModal] = useState<{ open: boolean; userId: number; action: 'approve' | 'reject' }>({ open: false, userId: 0, action: 'approve' })
   const [auditForm] = Form.useForm()
   const queryClient = useQueryClient()
+  const roleId = useAuthStore((state) => state.adminInfo?.roleId)
+  const auditAllowed = canAudit(roleId)
+  const operateAllowed = canOperate(roleId)
 
   const queryParams = { ...params, keyword: keyword || undefined }
 
@@ -118,19 +123,21 @@ export default function UserList() {
       render: (_, record) => (
         <Space>
           <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => setSelectedUser(record)}>详情</Button>
-          {record.identityStatus === 1 && (
+          {auditAllowed && record.identityStatus === 1 && (
             <Button type="link" size="small" icon={<IdcardOutlined />} style={{ color: '#f59e0b' }} onClick={() => setSelectedUser(record)}>
               审核
             </Button>
           )}
-          <Popconfirm
-            title={`确认${record.status === 1 ? '停用' : '启用'}该用户？`}
-            onConfirm={() => toggleStatus({ id: record.id, status: record.status === 1 ? 0 : 1 })}
-          >
-            <Button type="link" size="small" danger={record.status === 1}>
-              {record.status === 1 ? '停用' : '启用'}
-            </Button>
-          </Popconfirm>
+          {operateAllowed && (
+            <Popconfirm
+              title={`确认${record.status === 1 ? '停用' : '启用'}该用户？`}
+              onConfirm={() => toggleStatus({ id: record.id, status: record.status === 1 ? 0 : 1 })}
+            >
+              <Button type="link" size="small" danger={record.status === 1}>
+                {record.status === 1 ? '停用' : '启用'}
+              </Button>
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
@@ -197,7 +204,7 @@ export default function UserList() {
 
             {hasIdentityInfo(selectedUser) ? (
               <>
-                {selectedUser.identityStatus === 1 && (
+                {auditAllowed && selectedUser.identityStatus === 1 && (
                   <Alert
                     type="warning"
                     message="该用户已提交实名认证，等待审核"

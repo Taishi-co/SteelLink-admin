@@ -39,6 +39,17 @@
 | 系统管理 | `/system/*` | 管理员、角色、菜单管理 | 否 | 否 | 否 | 是 | `RequireRole(1)` |
 | 操作日志 | `/log` | 查看 | 是 | 是 | 是 | 是 | 登录态 |
 
+## 默认菜单分配
+
+| 角色 | 默认菜单 |
+| --- | --- |
+| 超级管理员 | 全部菜单 |
+| 运营管理员 | `/dashboard`、业务审核页、服务资源审核页、`/product`、`/product/order`、`/product/category`、`/log`、`/notification` |
+| 审核员 | `/dashboard`、业务审核页、服务资源审核页、`/product`、`/product/order`、`/product/category`、`/log` |
+| 普通管理端账号 | 不自动分配菜单，由超级管理员显式配置 |
+
+前端动作按钮按同一矩阵显隐；后端接口仍是最终授权边界。
+
 ## 待补充信息
 
 - 菜单按钮级 permission code 与后端角色分组的统一生成规则。

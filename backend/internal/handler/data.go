@@ -753,6 +753,41 @@ func ensureDefaultAdminMenus(ctx context.Context, db *sql.DB) {
 	if tableExists(ctx, db, "admin_role_menus") {
 		_, _ = db.ExecContext(ctx, `INSERT IGNORE INTO admin_role_menus (role_id, menu_id)
 			SELECT 1, id FROM admin_menus WHERE deleted_at IS NULL`)
+		ensureRoleMenusByPaths(ctx, db, 2, []string{
+			"/dashboard",
+			"/user",
+			"/enterprise",
+			"/enterprise/services",
+			"/service-offers/warehouse",
+			"/service-offers/logistics",
+			"/service-offers/finance",
+			"/product",
+			"/product/order",
+			"/product/category",
+			"/log",
+			"/notification",
+		})
+		ensureRoleMenusByPaths(ctx, db, 3, []string{
+			"/dashboard",
+			"/user",
+			"/enterprise",
+			"/enterprise/services",
+			"/service-offers/warehouse",
+			"/service-offers/logistics",
+			"/service-offers/finance",
+			"/product",
+			"/product/order",
+			"/product/category",
+			"/log",
+		})
+	}
+}
+
+func ensureRoleMenusByPaths(ctx context.Context, db *sql.DB, roleID int64, paths []string) {
+	for _, path := range paths {
+		_, _ = db.ExecContext(ctx, `INSERT IGNORE INTO admin_role_menus (role_id, menu_id)
+			SELECT ?, id FROM admin_menus WHERE path = ? AND deleted_at IS NULL`,
+			roleID, path)
 	}
 }
 

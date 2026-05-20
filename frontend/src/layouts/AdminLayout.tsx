@@ -132,14 +132,8 @@ const fallbackMenuItems: MenuProps['items'] = [
   },
 ]
 
-const notificationMenuItem: NonNullable<MenuProps['items']>[number] = {
-  key: '/notification',
-  icon: <MailOutlined />,
-  label: '站内信',
-}
-
 function apiMenuToAntd(items: ApiMenuItem[]): MenuProps['items'] {
-  if (!items || items.length === 0) return fallbackMenuItems
+  if (!items || items.length === 0) return []
 
   return items.map((item) => {
     const icon = item.icon ? (iconMap[item.icon] || null) : null
@@ -187,9 +181,20 @@ const pageMeta: Record<string, { title: string; description: string }> = {
   '/log': { title: '操作日志', description: '管理员操作审计日志' },
 }
 
+const canonicalPathMap: Record<string, string> = {
+  '/user/list': '/user',
+  '/enterprise/list': '/enterprise',
+  '/product/list': '/product',
+}
+
+function canonicalMenuPath(path: string) {
+  return canonicalPathMap[path] || path
+}
+
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false)
   const [menuLoading, setMenuLoading] = useState(true)
+  const [menuLoadFailed, setMenuLoadFailed] = useState(false)
   const [apiMenus, setApiMenus] = useState<ApiMenuItem[]>([])
   const navigate = useNavigate()
   const location = useLocation()
@@ -201,40 +206,40 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   useEffect(() => {
     authApi.getMyMenus()
       .then((data) => {
-        if (Array.isArray(data) && data.length > 0) {
+        if (Array.isArray(data)) {
           setApiMenus(data)
+          setMenuLoadFailed(false)
+        } else {
+          setMenuLoadFailed(true)
         }
       })
-      .catch(() => {})
+      .catch(() => setMenuLoadFailed(true))
       .finally(() => setMenuLoading(false))
   }, [])
 
   const menuItems = useMemo(() => {
-    if (apiMenus.length > 0) {
-      return [...(apiMenuToAntd(apiMenus) || []), notificationMenuItem]
+    if (menuLoadFailed) {
+      return fallbackMenuItems
     }
-    return fallbackMenuItems
-  }, [apiMenus])
+    return apiMenuToAntd(apiMenus)
+  }, [apiMenus, menuLoadFailed])
   const allowedPaths = useMemo(() => {
-    const paths = collectMenuPaths(apiMenus)
-    if (paths.length > 0 && !paths.includes('/notification')) {
-      paths.push('/notification')
-    }
-    return paths
+    return collectMenuPaths(apiMenus)
   }, [apiMenus])
-  const firstAllowedPath = allowedPaths[0] || '/dashboard'
-  const routeAllowed = menuLoading || allowedPaths.length === 0 || allowedPaths.includes(location.pathname)
+  const currentPath = canonicalMenuPath(location.pathname)
+  const firstAllowedPath = allowedPaths[0] || ''
+  const routeAllowed = menuLoading || menuLoadFailed || allowedPaths.includes(currentPath)
 
   useEffect(() => {
-    if (!menuLoading && allowedPaths.length > 0 && !allowedPaths.includes(location.pathname)) {
+    if (!menuLoading && !menuLoadFailed && allowedPaths.length > 0 && !allowedPaths.includes(currentPath)) {
       navigate(firstAllowedPath, { replace: true })
     }
-  }, [allowedPaths, firstAllowedPath, location.pathname, menuLoading, navigate])
+  }, [allowedPaths, currentPath, firstAllowedPath, menuLoadFailed, menuLoading, navigate])
 
-  const currentMeta = pageMeta[location.pathname] ?? pageMeta['/dashboard']
+  const currentMeta = pageMeta[currentPath] ?? pageMeta['/dashboard']
 
   const getOpenKeys = () => {
-    const path = location.pathname
+    const path = currentPath
     if (path.startsWith('/system')) return ['/system']
     if (path === '/user' || path.startsWith('/enterprise') || path.startsWith('/service-offers')) return ['/business']
     if (path.startsWith('/product')) return ['/product-center']
@@ -279,7 +284,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <Menu
             theme="dark"
             mode="inline"
-            selectedKeys={[location.pathname]}
+            selectedKeys={[currentPath]}
             defaultOpenKeys={getOpenKeys()}
             items={menuItems}
             onClick={handleMenuClick}

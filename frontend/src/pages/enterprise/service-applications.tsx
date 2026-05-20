@@ -4,6 +4,8 @@ import type { ColumnsType } from 'antd/es/table'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { enterpriseServiceApi, PageParams, ServiceApplicationItem } from '../../services/api'
 import { formatDateTime } from '../../utils/format'
+import { canAudit } from '../../utils/permissions'
+import { useAuthStore } from '../../store/useAuthStore'
 
 const serviceMeta: Record<string, { text: string; color: string; kind: string }> = {
   sales: { text: '销售交易能力', color: 'blue', kind: 'trade' },
@@ -35,6 +37,8 @@ export default function EnterpriseServiceApplications() {
   const [auditTarget, setAuditTarget] = useState<ServiceApplicationItem | null>(null)
   const [auditForm] = Form.useForm<{ status: number; reason?: string }>()
   const queryClient = useQueryClient()
+  const roleId = useAuthStore((state) => state.adminInfo?.roleId)
+  const auditAllowed = canAudit(roleId)
 
   const { data, isLoading } = useQuery({
     queryKey: ['enterprise-service-applications', params],
@@ -92,7 +96,7 @@ export default function EnterpriseServiceApplications() {
       render: (_, record) => (
         <Space>
           <Button type="link" size="small" onClick={() => setSelected(record)}>查看</Button>
-          {record.status === 1 && (
+          {auditAllowed && record.status === 1 && (
             <Button
               type="link"
               size="small"

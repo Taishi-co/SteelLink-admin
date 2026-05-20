@@ -1,7 +1,9 @@
-import { Button, Card, Form, Input, Select, Space, Switch, Typography, message } from 'antd'
+import { Alert, Button, Card, Form, Input, Select, Space, Switch, Typography, message } from 'antd'
 import { SendOutlined } from '@ant-design/icons'
 import { useMutation } from '@tanstack/react-query'
 import { notificationApi, type SendNotificationPayload } from '../../services/api'
+import { canOperate } from '../../utils/permissions'
+import { useAuthStore } from '../../store/useAuthStore'
 
 const { TextArea } = Input
 const { Paragraph } = Typography
@@ -26,6 +28,8 @@ function parseIDs(value?: string): number[] {
 export default function NotificationPage() {
   const [form] = Form.useForm<NotificationFormValues>()
   const sendToAll = Form.useWatch('sendToAll', form)
+  const roleId = useAuthStore((state) => state.adminInfo?.roleId)
+  const sendAllowed = canOperate(roleId)
 
   const mutation = useMutation({
     mutationFn: (payload: SendNotificationPayload) => notificationApi.send(payload),
@@ -51,10 +55,13 @@ export default function NotificationPage() {
 
   return (
     <Card title="发送站内信">
+      {!sendAllowed && (
+        <Alert type="warning" showIcon message="当前角色无权发送站内信" style={{ marginBottom: 16 }} />
+      )}
       <Paragraph type="secondary">
         管理员通知会进入用户买家端或卖家端的站内信收件箱，可按用户 ID、企业 ID、用户角色或全量发送。
       </Paragraph>
-      <Form form={form} layout="vertical" initialValues={{ sendToAll: false }} onFinish={handleFinish} style={{ maxWidth: 760 }}>
+      <Form form={form} layout="vertical" initialValues={{ sendToAll: false }} onFinish={handleFinish} disabled={!sendAllowed} style={{ maxWidth: 760 }}>
         <Form.Item name="sendToAll" label="发送范围" valuePropName="checked">
           <Switch checkedChildren="全量发送" unCheckedChildren="指定接收人" />
         </Form.Item>
