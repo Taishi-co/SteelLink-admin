@@ -69,6 +69,12 @@ func RegisterRoutes(r *gin.Engine) {
 			protected.GET("/product-categories", handler.ListProductCategories)
 			protected.GET("/operation-logs", handler.ListOperationLogs)
 
+			notificationAdmin := protected.Group("")
+			notificationAdmin.Use(middleware.RequireRole(1, 2))
+			{
+				notificationAdmin.POST("/admin/notifications", handler.SendNotification)
+			}
+
 			superOnly := protected.Group("")
 			superOnly.Use(middleware.RequireRole(1))
 			{

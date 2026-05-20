@@ -2,7 +2,7 @@
 
 ## 当前仓库状态
 
-`SteelLink-admin` 当前目录尚未初始化具体业务代码。本文件先定义 SteelLink 管理端前后端同仓项目的目标结构与协作边界；项目初始化后，如果实际结构与本文不同，应同步更新本文。
+`SteelLink-admin` 当前为管理端前后端同仓项目，已初始化 React 管理前端、Go/Gin 管理后端、双 Dockerfile 镜像入口和统一 harness 流程。本文件按当前真实结构描述协作边界；后续如果目录、构建入口或部署方式变化，应同步更新本文。
 
 ## 项目定位
 
@@ -10,24 +10,23 @@
 
 ## 技术栈约束
 
-- 已知：前端框架使用 React
-- 已知：后端框架使用 Go + Gin
-- 待代码初始化后确认：TypeScript/JavaScript 方案、构建工具、路由库、状态管理、请求库、测试框架、样式方案
-- 待代码初始化后确认：后端目录布局、模块拆分、数据库访问层、配置加载方式
-- 原则：以仓库实际 `package.json`、锁文件、`go.mod` 和源码目录为准，不要在没有代码时武断指定实现细节
+- 前端：`frontend/`，React + TypeScript + Vite + Ant Design + React Router + TanStack Query。
+- 后端：`backend/`，Go + Gin，按 `cmd/`、`internal/handler`、`internal/router`、`internal/middleware`、`internal/database` 组织。
+- 部署：根目录提供 `Dockerfile.admin-backend` 与 `Dockerfile.admin-frontend`，前端镜像支持 `VITE_API_BASE_URL` build arg。
+- 原则：以仓库实际 `frontend/package.json`、`backend/go.mod`、Dockerfile 和源码目录为准。
 
-## 推荐目录地图
+## 目录地图
 
-- `frontend/` 或 `web/`
-  React 管理端主目录，若未拆子目录，也可能直接在仓库根目录放置前端代码。
-- `frontend/src/main.*`
+- `frontend/`
+  React 管理端主目录。
+- `frontend/src/main.tsx`
   前端应用启动入口，负责挂载根组件、注册路由、Provider 与全局样式。
 - `frontend/src/router/`
   路由定义、路由守卫、动态菜单与权限拦截逻辑。
 - `frontend/src/layouts/`
   管理端整体骨架，如侧边栏、顶部导航、面包屑、标签页、内容区。
 - `frontend/src/pages/`
-  页面级实现，按业务域划分目录。
+  页面级实现，覆盖 dashboard、系统管理、用户、企业、商品、订单、服务商审核、AI 采购配置、日志、通知等业务域。
 - `frontend/src/components/`
   复用组件与通用管理端组件，如表格、搜索栏、弹窗、表单片段。
 - `frontend/src/services/`
@@ -42,16 +41,22 @@
   全局样式、主题变量、覆盖样式。
 - `frontend/public/`
   静态资源与 HTML 模板。
-- `backend/` 或 `server/`
-  Go/Gin 服务主目录，若未拆子目录，也可能直接在仓库根目录放置后端代码。
+- `backend/`
+  Go/Gin 管理端服务主目录。
 - `backend/cmd/`
   后端服务启动入口。
 - `backend/internal/`
   业务实现、handler、service、middleware、repository 等内部模块。
-- `backend/pkg/`
-  可复用公共能力，如响应结构、错误码、日志、认证封装。
-- `backend/config/`
-  配置结构、样例配置与环境变量映射。
+- `backend/internal/router/`
+  管理端 API 路由注册。
+- `backend/internal/handler/`
+  管理端 HTTP handler，包含登录、dashboard、用户、企业、产品、订单、服务商、AI 采购配置等接口。
+- `backend/internal/database/`
+  数据库连接与初始化。
+- `Dockerfile.admin-backend`
+  管理端后端镜像构建入口。
+- `Dockerfile.admin-frontend`
+  管理端前端镜像构建入口。
 - `harness/`
   项目约束脚本入口，负责 bootstrap、分支检查、验证、review、release、deploy。
 - `docs/ai/`

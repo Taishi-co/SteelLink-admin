@@ -696,6 +696,7 @@ func AutoMigrate(db *sql.DB) {
 	}
 
 	ensureProductCategoriesTable(ctx, db)
+	_ = ensureNotificationsTable(ctx, db)
 
 	if !tableExists(ctx, db, "admin_role_menus") {
 		db.ExecContext(ctx, `CREATE TABLE admin_role_menus (
