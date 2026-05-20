@@ -1622,6 +1622,10 @@ func ListProducts(c *gin.Context) {
 	if columnExists(ctx, db, "products", "warehouse_enterprise_id") {
 		warehouseEnterpriseIDExpr = "COALESCE(warehouse_enterprise_id, 0)"
 	}
+	auditorIDExpr := "0"
+	if columnExists(ctx, db, "products", "auditor_id") {
+		auditorIDExpr = "COALESCE(auditor_id, 0)"
+	}
 
 	total, err := queryCount(ctx, db, fmt.Sprintf(`SELECT COUNT(*) FROM products WHERE %s`, whereClause), args...)
 	if err != nil {
@@ -1634,13 +1638,13 @@ func ListProducts(c *gin.Context) {
 		SELECT id, name, enterprise_id, COALESCE(category, ''), COALESCE(sub_category, ''), COALESCE(steel_mill, ''),
 		       %s, %s, %s,
 		       spec, warehouse_info, COALESCE(bundle_no, ''), COALESCE(product_no, ''),
-		       COALESCE(unit_price, 0), COALESCE(quantity, 0), COALESCE(min_order_qty, 0),
+		       COALESCE(unit, ''), COALESCE(unit_price, 0), COALESCE(quantity, 0), COALESCE(min_order_qty, 0),
 		       COALESCE(delivery_days, 0), COALESCE(quote_validity, 0),
-		       COALESCE(description, ''), images, status, created_at, COALESCE(audit_remark, ''), approved_at, updated_at
+		       COALESCE(description, ''), images, status, created_at, COALESCE(audit_remark, ''), %s, approved_at, updated_at
 		FROM products
 		WHERE %s
 		ORDER BY id DESC
-		LIMIT ? OFFSET ?`, goodsTypeExpr, warehouseServiceIDExpr, warehouseEnterpriseIDExpr, whereClause), queryArgs...)
+		LIMIT ? OFFSET ?`, goodsTypeExpr, warehouseServiceIDExpr, warehouseEnterpriseIDExpr, auditorIDExpr, whereClause), queryArgs...)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 		return
@@ -1657,13 +1661,12 @@ func ListProducts(c *gin.Context) {
 		var auditRemark sql.NullString
 		var auditedAt sql.NullTime
 		var updatedAt sql.NullTime
-		var productNo string
 		if err := rows.Scan(&item.ID, &item.Name, &item.EnterpriseID, &item.Category, &item.SubCategory, &item.SteelMill,
 			&item.GoodsType, &item.WarehouseServiceID, &item.WarehouseEnterpriseID,
-			&rawSpec, &rawWarehouse, &item.BundleNo, &productNo,
-			&item.Price, &item.Stock, &item.MinOrderQty,
+			&rawSpec, &rawWarehouse, &item.BundleNo, &item.ProductNo,
+			&item.Unit, &item.Price, &item.Stock, &item.MinOrderQty,
 			&item.DeliveryDays, &item.QuoteValidity,
-			&item.Description, &imageJSON, &rawStatus, &item.CreatedAt, &auditRemark, &auditedAt, &updatedAt); err != nil {
+			&item.Description, &imageJSON, &rawStatus, &item.CreatedAt, &auditRemark, &item.AuditorID, &auditedAt, &updatedAt); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 			return
 		}
@@ -2896,6 +2899,214 @@ func timelineStepStatus(position, step int) string {
 	return "pending"
 }
 
+type productRowQuerier interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+type productAuditLogExecutor interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
+type productRowScanner interface {
+	Scan(dest ...any) error
+}
+
+func getProductItemByID(ctx context.Context, querier productRowQuerier, schemaDB *sql.DB, productID int64) (productItem, error) {
+	goodsTypeExpr := "'spot'"
+	if columnExists(ctx, schemaDB, "products", "goods_type") {
+		goodsTypeExpr = "COALESCE(goods_type, 'spot')"
+	}
+	warehouseServiceIDExpr := "0"
+	if columnExists(ctx, schemaDB, "products", "warehouse_service_id") {
+		warehouseServiceIDExpr = "COALESCE(warehouse_service_id, 0)"
+	}
+	warehouseEnterpriseIDExpr := "0"
+	if columnExists(ctx, schemaDB, "products", "warehouse_enterprise_id") {
+		warehouseEnterpriseIDExpr = "COALESCE(warehouse_enterprise_id, 0)"
+	}
+	auditorIDExpr := "0"
+	if columnExists(ctx, schemaDB, "products", "auditor_id") {
+		auditorIDExpr = "COALESCE(auditor_id, 0)"
+	}
+
+	row := querier.QueryRowContext(ctx, fmt.Sprintf(`
+		SELECT id, name, enterprise_id, COALESCE(category, ''), COALESCE(sub_category, ''), COALESCE(steel_mill, ''),
+		       %s, %s, %s,
+		       spec, warehouse_info, COALESCE(bundle_no, ''), COALESCE(product_no, ''),
+		       COALESCE(unit, ''), COALESCE(unit_price, 0), COALESCE(quantity, 0), COALESCE(min_order_qty, 0),
+		       COALESCE(delivery_days, 0), COALESCE(quote_validity, 0),
+		       COALESCE(description, ''), images, status, COALESCE(audit_remark, ''), %s, approved_at, created_at, updated_at
+		FROM products
+		WHERE deleted_at IS NULL AND id = ?
+		LIMIT 1`, goodsTypeExpr, warehouseServiceIDExpr, warehouseEnterpriseIDExpr, auditorIDExpr), productID)
+	return scanProductItemRow(row)
+}
+
+func scanProductItemRow(row productRowScanner) (productItem, error) {
+	var item productItem
+	var imageJSON sql.NullString
+	var rawStatus int
+	var auditRemark sql.NullString
+	var auditedAt sql.NullTime
+	var updatedAt sql.NullTime
+	var rawSpec sql.NullString
+	var rawWarehouse sql.NullString
+	if err := row.Scan(
+		&item.ID,
+		&item.Name,
+		&item.EnterpriseID,
+		&item.Category,
+		&item.SubCategory,
+		&item.SteelMill,
+		&item.GoodsType,
+		&item.WarehouseServiceID,
+		&item.WarehouseEnterpriseID,
+		&rawSpec,
+		&rawWarehouse,
+		&item.BundleNo,
+		&item.ProductNo,
+		&item.Unit,
+		&item.Price,
+		&item.Stock,
+		&item.MinOrderQty,
+		&item.DeliveryDays,
+		&item.QuoteValidity,
+		&item.Description,
+		&imageJSON,
+		&rawStatus,
+		&auditRemark,
+		&item.AuditorID,
+		&auditedAt,
+		&item.CreatedAt,
+		&updatedAt,
+	); err != nil {
+		return productItem{}, err
+	}
+
+	item.Images = parseImages(imageJSON)
+	item.Status = mapProductIntStatus(rawStatus)
+	specInfo := parseProductSpec(rawSpec)
+	item.Spec = specInfo.Spec
+	item.Material = specInfo.Material
+	warehouse := parseWarehouseInfo(rawWarehouse)
+	item.WarehouseName = warehouse.WarehouseName
+	item.WarehouseCode = warehouse.WarehouseCode
+	item.Province = warehouse.Province
+	item.City = warehouse.City
+	item.District = warehouse.District
+	item.Address = warehouse.Address
+	if item.WarehouseServiceID == 0 {
+		item.WarehouseServiceID = warehouse.WarehouseServiceID
+	}
+	if item.WarehouseEnterpriseID == 0 {
+		item.WarehouseEnterpriseID = warehouse.WarehouseEnterpriseID
+	}
+	if auditRemark.Valid {
+		item.AuditRemark = auditRemark.String
+	}
+	if auditedAt.Valid {
+		item.AuditedAt = &auditedAt.Time
+	}
+	if updatedAt.Valid {
+		item.UpdatedAt = updatedAt.Time
+	}
+	return item, nil
+}
+
+func listProductAuditHistory(ctx context.Context, db *sql.DB, productID int64) ([]productAuditLogItem, error) {
+	if db == nil || !tableExists(ctx, db, "product_audit_logs") {
+		return nil, nil
+	}
+	columns := columnsExist(ctx, db, "product_audit_logs")
+	fromStatusExpr := "0"
+	if columns["from_status"] {
+		fromStatusExpr = "COALESCE(from_status, 0)"
+	}
+	toStatusExpr := "0"
+	if columns["to_status"] {
+		toStatusExpr = "COALESCE(to_status, 0)"
+	}
+	beforeSnapshotExpr := "NULL"
+	if columns["before_snapshot"] {
+		beforeSnapshotExpr = "before_snapshot"
+	}
+	afterSnapshotExpr := "NULL"
+	if columns["after_snapshot"] {
+		afterSnapshotExpr = "after_snapshot"
+	}
+
+	rows, err := db.QueryContext(ctx, fmt.Sprintf(`
+		SELECT id, product_id, COALESCE(product_sku_id, ''), COALESCE(action, ''), COALESCE(status, ''),
+		       %s, %s, COALESCE(operator_id, 0), COALESCE(operator_name, ''), COALESCE(remark, ''),
+		       %s, %s, created_at
+		FROM product_audit_logs
+		WHERE product_id = ?
+		ORDER BY id DESC
+		LIMIT 20`, fromStatusExpr, toStatusExpr, beforeSnapshotExpr, afterSnapshotExpr), productID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]productAuditLogItem, 0)
+	for rows.Next() {
+		var item productAuditLogItem
+		var beforeSnapshot sql.NullString
+		var afterSnapshot sql.NullString
+		if err := rows.Scan(
+			&item.ID,
+			&item.ProductID,
+			&item.ProductSkuID,
+			&item.Action,
+			&item.Status,
+			&item.FromStatus,
+			&item.ToStatus,
+			&item.OperatorID,
+			&item.OperatorName,
+			&item.Remark,
+			&beforeSnapshot,
+			&afterSnapshot,
+			&item.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		item.BeforeSnapshot = parseProductAuditSnapshot(beforeSnapshot)
+		item.AfterSnapshot = parseProductAuditSnapshot(afterSnapshot)
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func insertProductAuditLog(ctx context.Context, executor productAuditLogExecutor, columns map[string]bool, beforeItem, afterItem productItem, status, operatorName, remark string, operatorID int64) error {
+	fields := []string{"product_id", "product_sku_id", "action", "status", "operator_id", "operator_name", "remark", "created_at"}
+	placeholders := []string{"?", "?", "?", "?", "?", "?", "?", "?"}
+	values := []any{afterItem.ID, afterItem.ProductNo, "platform_audit", status, operatorID, operatorName, remark, time.Now()}
+	if columns["from_status"] {
+		fields = append(fields, "from_status")
+		placeholders = append(placeholders, "?")
+		values = append(values, beforeItem.Status)
+	}
+	if columns["to_status"] {
+		fields = append(fields, "to_status")
+		placeholders = append(placeholders, "?")
+		values = append(values, afterItem.Status)
+	}
+	if columns["before_snapshot"] {
+		fields = append(fields, "before_snapshot")
+		placeholders = append(placeholders, "?")
+		values = append(values, productAuditSnapshotJSON(buildProductAuditSnapshot(beforeItem)))
+	}
+	if columns["after_snapshot"] {
+		fields = append(fields, "after_snapshot")
+		placeholders = append(placeholders, "?")
+		values = append(values, productAuditSnapshotJSON(buildProductAuditSnapshot(afterItem)))
+	}
+
+	query := fmt.Sprintf("INSERT INTO product_audit_logs (%s) VALUES (%s)", strings.Join(fields, ", "), strings.Join(placeholders, ", "))
+	_, err := executor.ExecContext(ctx, query, values...)
+	return err
+}
+
 // GetProduct returns a single product
 func GetProduct(c *gin.Context) {
 	db := database.GetDB()
@@ -2925,21 +3136,24 @@ func GetProduct(c *gin.Context) {
 	if columnExists(ctx, db, "products", "warehouse_enterprise_id") {
 		warehouseEnterpriseIDExpr = "COALESCE(warehouse_enterprise_id, 0)"
 	}
+	auditorIDExpr := "0"
+	if columnExists(ctx, db, "products", "auditor_id") {
+		auditorIDExpr = "COALESCE(auditor_id, 0)"
+	}
 
 	row := db.QueryRowContext(ctx, fmt.Sprintf(`
 		SELECT id, name, enterprise_id, COALESCE(category, ''), COALESCE(sub_category, ''), COALESCE(steel_mill, ''),
 		       %s, %s, %s,
 		       spec, warehouse_info, COALESCE(bundle_no, ''), COALESCE(product_no, ''),
-		       COALESCE(unit_price, 0), COALESCE(quantity, 0), COALESCE(min_order_qty, 0),
+		       COALESCE(unit, ''), COALESCE(unit_price, 0), COALESCE(quantity, 0), COALESCE(min_order_qty, 0),
 		       COALESCE(delivery_days, 0), COALESCE(quote_validity, 0),
-		       COALESCE(description, ''), images, status, COALESCE(audit_remark, ''), approved_at, created_at, updated_at
+		       COALESCE(description, ''), images, status, COALESCE(audit_remark, ''), %s, approved_at, created_at, updated_at
 		FROM products
 		WHERE deleted_at IS NULL AND id = ?
-		LIMIT 1`, goodsTypeExpr, warehouseServiceIDExpr, warehouseEnterpriseIDExpr), c.Param("id"))
+		LIMIT 1`, goodsTypeExpr, warehouseServiceIDExpr, warehouseEnterpriseIDExpr, auditorIDExpr), c.Param("id"))
 
 	var rawSpec sql.NullString
 	var rawWarehouse sql.NullString
-	var productNo string
 	if err := row.Scan(
 		&item.ID,
 		&item.Name,
@@ -2953,7 +3167,8 @@ func GetProduct(c *gin.Context) {
 		&rawSpec,
 		&rawWarehouse,
 		&item.BundleNo,
-		&productNo,
+		&item.ProductNo,
+		&item.Unit,
 		&item.Price,
 		&item.Stock,
 		&item.MinOrderQty,
@@ -2963,6 +3178,7 @@ func GetProduct(c *gin.Context) {
 		&imageJSON,
 		&rawStatus,
 		&auditRemark,
+		&item.AuditorID,
 		&auditedAt,
 		&item.CreatedAt,
 		&updatedAt,
@@ -3002,6 +3218,12 @@ func GetProduct(c *gin.Context) {
 	if updatedAt.Valid {
 		item.UpdatedAt = updatedAt.Time
 	}
+	history, err := listProductAuditHistory(ctx, db, item.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+	item.AuditHistory = history
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
@@ -3052,11 +3274,44 @@ func AuditProduct(c *gin.Context) {
 		operatorID = int64(v)
 	}
 
+	productID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || productID <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid product id"})
+		return
+	}
+
+	auditLogTableExists := tableExists(ctx, db, "product_audit_logs")
+	auditLogColumns := map[string]bool{}
+	if auditLogTableExists {
+		auditLogColumns = columnsExist(ctx, db, "product_audit_logs")
+	}
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+	defer tx.Rollback()
+
+	beforeItem, err := getProductItemByID(ctx, tx, db, productID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "product not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+
 	setParts := []string{"status = ?"}
 	args := []any{statusValue}
 	if columnExists(ctx, db, "products", "audit_remark") {
 		setParts = append(setParts, "audit_remark = ?")
 		args = append(args, strings.TrimSpace(req.AuditRemark))
+	}
+	if columnExists(ctx, db, "products", "auditor_id") {
+		setParts = append(setParts, "auditor_id = ?")
+		args = append(args, operatorID)
 	}
 	if columnExists(ctx, db, "products", "approved_at") {
 		if req.Status == 1 {
@@ -3071,9 +3326,9 @@ func AuditProduct(c *gin.Context) {
 		args = append(args, time.Now())
 	}
 
-	args = append(args, c.Param("id"))
+	args = append(args, productID)
 	query := fmt.Sprintf("UPDATE products SET %s WHERE id = ? AND deleted_at IS NULL", strings.Join(setParts, ", "))
-	result, err := db.ExecContext(ctx, query, args...)
+	result, err := tx.ExecContext(ctx, query, args...)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 		return
@@ -3084,39 +3339,29 @@ func AuditProduct(c *gin.Context) {
 		return
 	}
 
-	var currentStatus int
-	if err := db.QueryRowContext(ctx, `SELECT status FROM products WHERE id = ? LIMIT 1`, c.Param("id")).Scan(&currentStatus); err != nil {
+	afterItem, err := getProductItemByID(ctx, tx, db, productID)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 		return
 	}
-	if currentStatus != statusValue {
+	if afterItem.Status != statusValue {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "product audit status sync failed"})
 		return
 	}
 
-	if tableExists(ctx, db, "product_audit_logs") {
-		var productNo string
-		productID := int64(0)
-		fmt.Sscanf(c.Param("id"), "%d", &productID)
-		_ = db.QueryRowContext(ctx, `SELECT COALESCE(product_no, '') FROM products WHERE id = ? LIMIT 1`, c.Param("id")).Scan(&productNo)
-		if _, err := db.ExecContext(ctx, `
-			INSERT INTO product_audit_logs (product_id, product_sku_id, action, status, operator_id, operator_name, remark, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-			productID,
-			productNo,
-			"platform_audit",
-			logStatus,
-			operatorID,
-			adminName,
-			strings.TrimSpace(req.AuditRemark),
-			time.Now(),
-		); err != nil {
+	if auditLogTableExists {
+		if err := insertProductAuditLog(ctx, tx, auditLogColumns, beforeItem, afterItem, logStatus, adminName, strings.TrimSpace(req.AuditRemark), operatorID); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 			return
 		}
 	}
 
-	logOpFromContext(c, db, "product", "audit", 0, fmt.Sprintf(`{"id":"%s","status":%d}`, c.Param("id"), req.Status))
+	if err := tx.Commit(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+
+	logOpFromContext(c, db, "product", "audit", 0, fmt.Sprintf(`{"id":"%d","status":%d}`, productID, req.Status))
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,

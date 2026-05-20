@@ -22,7 +22,7 @@ import {
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { productApi, ProductItem, PageParams } from '../../services/api'
+import { productApi, ProductAuditLogItem, ProductAuditSnapshot, ProductItem, PageParams } from '../../services/api'
 import { formatDateTime } from '../../utils/format'
 import { canAudit } from '../../utils/permissions'
 import { useAuthStore } from '../../store/useAuthStore'
@@ -84,10 +84,34 @@ function numberValue(value: unknown, suffix = '') {
   return amount > 0 ? `${amount}${suffix}` : '-'
 }
 
-function productCompareRows(product?: ProductItem): CompareRow[] {
+function snapshotText(snapshot: ProductAuditSnapshot | undefined, key: string) {
+  if (!snapshot) return '暂无历史快照'
+  if (key === 'goodsType') {
+    const value = String(snapshot.goodsType || 'spot') as keyof typeof goodsTypeMeta
+    return goodsTypeMeta[value]?.text || textValue(snapshot.goodsType)
+  }
+  if (key === 'price') return moneyValue(snapshot.price)
+  if (key === 'stock') return numberValue(snapshot.stock)
+  if (key === 'minOrderQty') return numberValue(snapshot.minOrderQty)
+  if (key === 'deliveryDays') return numberValue(snapshot.deliveryDays, ' 天')
+  if (key === 'quoteValidity') return numberValue(snapshot.quoteValidity, ' 小时')
+  if (key === 'warehouseServiceId') return snapshot.warehouseServiceId ? `#${snapshot.warehouseServiceId}` : '-'
+  if (key === 'warehouseRegion') {
+    return textValue(snapshot.warehouseRegion || [snapshot.province, snapshot.city, snapshot.district].filter(Boolean).join(' / '))
+  }
+  return textValue(snapshot[key])
+}
+
+function latestAuditBaseline(product?: ProductItem): ProductAuditSnapshot | undefined {
+  const latest = product?.auditHistory?.[0]
+  return latest?.afterSnapshot || latest?.beforeSnapshot
+}
+
+function productCompareRows(product?: ProductItem, baselineSnapshot?: ProductAuditSnapshot): CompareRow[] {
   if (!product) return []
   const rows: Omit<CompareRow, 'baseline' | 'changed'>[] = [
     { key: 'name', group: '基础信息', label: '商品名称', submitted: textValue(product.name) },
+    { key: 'productNo', group: '基础信息', label: '商品编号', submitted: textValue(product.productNo) },
     { key: 'goodsType', group: '基础信息', label: '货品类型', submitted: goodsTypeMeta[(product.goodsType || 'spot') as keyof typeof goodsTypeMeta]?.text || textValue(product.goodsType) },
     { key: 'category', group: '基础信息', label: '主品类', submitted: textValue(product.category) },
     { key: 'subCategory', group: '基础信息', label: '子品类', submitted: textValue(product.subCategory) },
@@ -109,9 +133,21 @@ function productCompareRows(product?: ProductItem): CompareRow[] {
   ]
   return rows.map((row) => ({
     ...row,
-    baseline: '暂无历史快照',
-    changed: pendingReviewStatuses.has(product.status),
+    baseline: snapshotText(baselineSnapshot, row.key),
+    changed: baselineSnapshot ? snapshotText(baselineSnapshot, row.key) !== row.submitted : pendingReviewStatuses.has(product.status),
   }))
+}
+
+function auditStatusText(status: string) {
+  if (status === 'approved') return '通过'
+  if (status === 'rejected') return '驳回'
+  return status || '-'
+}
+
+function auditStatusColor(status: string) {
+  if (status === 'approved') return 'green'
+  if (status === 'rejected') return 'red'
+  return 'default'
 }
 
 export default function ProductList() {
@@ -135,10 +171,20 @@ export default function ProductList() {
     enabled: selectedId !== null,
   })
 
+  const auditTargetId = auditTarget?.id
+  const { data: auditDetailData, isFetching: auditDetailLoading } = useQuery({
+    queryKey: ['product-detail', auditTargetId],
+    queryFn: () => productApi.get(auditTargetId!),
+    enabled: auditTargetId !== undefined,
+  })
+
   const rows = data?.data.data.list ?? []
   const detail = detailData?.data.data
-  const detailCompareRows = productCompareRows(detail)
-  const auditCompareRows = productCompareRows(auditTarget || undefined)
+  const auditProductDetail = auditDetailData?.data.data ?? auditTarget ?? undefined
+  const detailBaseline = latestAuditBaseline(detail)
+  const auditBaseline = latestAuditBaseline(auditProductDetail)
+  const detailCompareRows = productCompareRows(detail, detailBaseline)
+  const auditCompareRows = productCompareRows(auditProductDetail, auditBaseline)
 
   const { mutate: auditProduct, isPending: auditSubmitting } = useMutation({
     mutationFn: ({ id, values }: { id: number; values: { status: number; auditRemark?: string } }) =>
@@ -152,6 +198,7 @@ export default function ProductList() {
       setAuditTarget(null)
       auditForm.resetFields()
       void queryClient.invalidateQueries({ queryKey: ['products'] })
+      void queryClient.invalidateQueries({ queryKey: ['product-detail', variables.id] })
       if (selectedId !== null) {
         void queryClient.invalidateQueries({ queryKey: ['product-detail', selectedId] })
       }
@@ -251,6 +298,40 @@ export default function ProductList() {
       width: 100,
       render: (_: unknown, record: CompareRow) => record.changed ? <Tag color="gold">待核对</Tag> : <Tag color="green">已审核</Tag>,
     },
+  ]
+
+  const auditHistoryColumns: ColumnsType<ProductAuditLogItem> = [
+    {
+      title: '审核时间',
+      dataIndex: 'createdAt',
+      key: 'createdAt',
+      width: 170,
+      render: (value: string) => formatDateTime(value),
+    },
+    {
+      title: '结果',
+      dataIndex: 'status',
+      key: 'status',
+      width: 90,
+      render: (value: string) => <Tag color={auditStatusColor(value)}>{auditStatusText(value)}</Tag>,
+    },
+    {
+      title: '状态变化',
+      key: 'statusChange',
+      width: 150,
+      render: (_, record) => {
+        const from = statusMeta[record.fromStatus as keyof typeof statusMeta]?.text ?? `状态${record.fromStatus}`
+        const to = statusMeta[record.toStatus as keyof typeof statusMeta]?.text ?? `状态${record.toStatus}`
+        return record.fromStatus || record.toStatus ? `${from} -> ${to}` : '-'
+      },
+    },
+    {
+      title: '审核人',
+      key: 'operator',
+      width: 120,
+      render: (_, record) => record.operatorName || (record.operatorId ? `#${record.operatorId}` : '-'),
+    },
+    { title: '备注', dataIndex: 'remark', key: 'remark', ellipsis: true, render: (value?: string) => value || '-' },
   ]
 
   const applyFilters = (values: ProductFilterValues) => {
@@ -363,7 +444,11 @@ export default function ProductList() {
               type="info"
               showIcon
               message="商品改动核对"
-              description="当前系统尚未保存完整历史字段快照；这里先按审核关键字段展示当前提交值，并标记待审核/驳回商品为待核对。后续卖家侧若落历史快照，可直接把审核基准替换为真实前值。"
+              description={
+                detailBaseline
+                  ? '下方展示当前提交值与最近一次审核后快照的差异，标记待核对的字段需审核员重点确认。'
+                  : '当前商品暂无历史字段快照；首次审核后会自动保存审核前后快照，后续可用于差异核对。'
+              }
             />
             <Table
               size="small"
@@ -373,6 +458,19 @@ export default function ProductList() {
               pagination={false}
               scroll={{ x: 760 }}
             />
+            {detail?.auditHistory && detail.auditHistory.length > 0 ? (
+              <Table
+                size="small"
+                title={() => '审核历史'}
+                columns={auditHistoryColumns}
+                dataSource={detail.auditHistory}
+                rowKey="id"
+                pagination={false}
+                scroll={{ x: 760 }}
+              />
+            ) : (
+              <Alert type="info" showIcon message="暂无审核历史快照" />
+            )}
             <Descriptions bordered column={1} size="small">
               <Descriptions.Item label="审核状态">
                 {detail ? (
@@ -419,7 +517,7 @@ export default function ProductList() {
       </Drawer>
 
       <Modal
-        title={`商品审核${auditTarget ? ` · ${auditTarget.name}` : ''}`}
+        title={`商品审核${auditProductDetail ? ` · ${auditProductDetail.name}` : ''}`}
         open={auditTarget !== null}
         onCancel={() => {
           setAuditTarget(null)
@@ -444,13 +542,18 @@ export default function ProductList() {
           type="warning"
           showIcon
           message="审核前请核对关键字段"
-          description="下方按商品基础、规格价格、履约仓储等维度汇总当前提交值。历史字段快照未落库时，审核基准暂显示为暂无历史快照。"
+          description={
+            auditBaseline
+              ? '下方按商品基础、规格价格、履约仓储等维度对比当前提交值和最近一次审核后快照。'
+              : '下方按商品基础、规格价格、履约仓储等维度汇总当前提交值；暂无历史快照时审核基准会显示为空。'
+          }
         />
         <Table
           size="small"
           columns={compareColumns}
           dataSource={auditCompareRows}
           rowKey="key"
+          loading={auditDetailLoading}
           pagination={false}
           scroll={{ x: 760, y: 360 }}
           style={{ marginBottom: 16 }}

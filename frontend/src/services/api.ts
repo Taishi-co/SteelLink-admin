@@ -240,6 +240,7 @@ export const enterpriseServiceApi = {
 export interface ProductItem {
   id: number
   name: string
+  productNo?: string
   categoryId?: number
   enterpriseId: number
   category?: string
@@ -269,12 +270,44 @@ export interface ProductItem {
   auditRemark?: string
   auditorId?: number
   auditedAt?: string
+  auditHistory?: ProductAuditLogItem[]
   createdAt: string
   updatedAt?: string
 }
 
+export type ProductAuditSnapshot = Record<string, unknown>
+
+export interface ProductAuditLogItem {
+  id: number
+  productId: number
+  productSkuId?: string
+  action?: string
+  status: string
+  fromStatus?: number
+  toStatus?: number
+  operatorId?: number
+  operatorName?: string
+  remark?: string
+  beforeSnapshot?: ProductAuditSnapshot
+  afterSnapshot?: ProductAuditSnapshot
+  createdAt: string
+}
+
+type BackendProductAuditLogItem = ProductAuditLogItem & {
+  product_id?: number
+  product_sku_id?: string
+  from_status?: number
+  to_status?: number
+  operator_id?: number
+  operator_name?: string
+  before_snapshot?: ProductAuditSnapshot
+  after_snapshot?: ProductAuditSnapshot
+  created_at?: string
+}
+
 type BackendProductItem = Omit<ProductItem, 'spec'> & {
   spec?: string | Record<string, unknown>
+  product_no?: string
   enterprise_id?: number
   sub_category?: string
   steel_mill?: string
@@ -297,6 +330,7 @@ type BackendProductItem = Omit<ProductItem, 'spec'> & {
   delivery_days?: number
   quote_validity?: number
   audit_remark?: string
+  audit_history?: BackendProductAuditLogItem[]
   approved_at?: string
   created_at?: string
   updated_at?: string
@@ -307,10 +341,24 @@ const productParams = (params: PageParams) => ({
   page_size: params.pageSize,
 })
 
+const normalizeProductAuditLog = (item: BackendProductAuditLogItem): ProductAuditLogItem => ({
+  ...item,
+  productId: item.productId ?? item.product_id ?? 0,
+  productSkuId: item.productSkuId ?? item.product_sku_id,
+  fromStatus: item.fromStatus ?? item.from_status,
+  toStatus: item.toStatus ?? item.to_status,
+  operatorId: item.operatorId ?? item.operator_id,
+  operatorName: item.operatorName ?? item.operator_name,
+  beforeSnapshot: item.beforeSnapshot ?? item.before_snapshot,
+  afterSnapshot: item.afterSnapshot ?? item.after_snapshot,
+  createdAt: item.createdAt ?? item.created_at ?? '',
+})
+
 const normalizeProduct = (item: BackendProductItem): ProductItem => {
   const warehouse = item.warehouse_info || {}
   return {
     ...item,
+    productNo: item.productNo ?? item.product_no,
     enterpriseId: item.enterpriseId ?? item.enterprise_id ?? 0,
     subCategory: item.subCategory ?? item.sub_category,
     steelMill: item.steelMill ?? item.steel_mill,
@@ -332,6 +380,7 @@ const normalizeProduct = (item: BackendProductItem): ProductItem => {
     quoteValidity: item.quoteValidity ?? item.quote_validity,
     auditRemark: item.auditRemark ?? item.audit_remark,
     auditedAt: item.auditedAt ?? item.approved_at,
+    auditHistory: (item.auditHistory ?? item.audit_history ?? []).map(normalizeProductAuditLog),
     createdAt: item.createdAt ?? item.created_at ?? '',
     updatedAt: item.updatedAt ?? item.updated_at,
   }
