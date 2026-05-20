@@ -157,19 +157,19 @@ export default function EnterpriseList() {
           <Button type="link" size="small" onClick={() => setSelectedId(record.id)}>
             查看
           </Button>
-          {auditAllowed && (
+          {auditAllowed && record.status !== 1 && (
             <Button
               type="link"
               size="small"
               onClick={() => {
                 setAuditTarget(record)
                 auditForm.setFieldsValue({
-                  status: record.status === 1 ? 1 : 2,
+                  status: record.status === 2 ? 2 : 1,
                   auditRemark: record.auditRemark,
                 })
               }}
             >
-              审核
+              {record.status === 2 ? '重新审核' : '审核'}
             </Button>
           )}
         </Space>
@@ -345,8 +345,16 @@ export default function EnterpriseList() {
               ]}
             />
           </Form.Item>
-          <Form.Item label="审核备注" name="auditRemark">
-            <Input.TextArea rows={4} placeholder="请输入审核说明，方便后续追踪与沟通。" />
+          <Form.Item noStyle shouldUpdate={(prev, current) => prev.status !== current.status}>
+            {({ getFieldValue }) => (
+              <Form.Item
+                label="审核备注"
+                name="auditRemark"
+                rules={getFieldValue('status') === 2 ? [{ required: true, message: '驳回时请输入审核备注' }] : []}
+              >
+                <Input.TextArea rows={4} placeholder="请输入审核说明，方便后续追踪与沟通。" />
+              </Form.Item>
+            )}
           </Form.Item>
         </Form>
       </Modal>
@@ -379,8 +387,16 @@ export default function EnterpriseList() {
               ]}
             />
           </Form.Item>
-          <Form.Item label="原因说明" name="reason">
-            <Input.TextArea rows={4} placeholder="请输入开通、驳回或暂停原因" />
+          <Form.Item noStyle shouldUpdate={(prev, current) => prev.status !== current.status}>
+            {({ getFieldValue }) => (
+              <Form.Item
+                label="原因说明"
+                name="reason"
+                rules={getFieldValue('status') !== 2 ? [{ required: true, message: '驳回或暂停时请输入原因说明' }] : []}
+              >
+                <Input.TextArea rows={4} placeholder="请输入开通、驳回或暂停原因" />
+              </Form.Item>
+            )}
           </Form.Item>
         </Form>
       </Modal>

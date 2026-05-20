@@ -1312,13 +1312,17 @@ func AuditUserIdentity(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "状态值无效，仅支持 2(通过) 或 3(驳回)"})
 		return
 	}
+	if !rejectReasonProvided(req.Status, 3, req.Reject) {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "驳回原因不能为空"})
+		return
+	}
 
 	var result sql.Result
 	var err error
 	if req.Status == 2 {
 		result, err = db.ExecContext(ctx, `UPDATE users SET identity_status = 2, identity_reject = '', updated_at = NOW() WHERE deleted_at IS NULL AND id = ? AND identity_status = 1`, id)
 	} else {
-		result, err = db.ExecContext(ctx, `UPDATE users SET identity_status = 3, identity_reject = ?, updated_at = NOW() WHERE deleted_at IS NULL AND id = ? AND identity_status = 1`, req.Reject, id)
+		result, err = db.ExecContext(ctx, `UPDATE users SET identity_status = 3, identity_reject = ?, updated_at = NOW() WHERE deleted_at IS NULL AND id = ? AND identity_status = 1`, strings.TrimSpace(req.Reject), id)
 	}
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
@@ -1480,8 +1484,12 @@ func AuditEnterprise(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid audit payload"})
 		return
 	}
-	if req.Status < 0 || req.Status > 2 {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid enterprise status"})
+	if !isEnterpriseAuditDecision(req.Status) {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid enterprise audit decision"})
+		return
+	}
+	if !rejectReasonProvided(req.Status, 2, req.AuditRemark) {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "驳回原因不能为空"})
 		return
 	}
 
@@ -1503,7 +1511,7 @@ func AuditEnterprise(c *gin.Context) {
 	args := []any{req.Status}
 	if columnExists(ctx, db, "enterprises", "audit_remark") {
 		setParts = append(setParts, "audit_remark = ?")
-		args = append(args, req.AuditRemark)
+		args = append(args, strings.TrimSpace(req.AuditRemark))
 	}
 	if columnExists(ctx, db, "enterprises", "auditor_id") {
 		setParts = append(setParts, "auditor_id = ?")
@@ -2729,20 +2737,14 @@ func AuditProduct(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid audit payload"})
 		return
 	}
-	if req.Status < 0 || req.Status > 2 {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid product status"})
+	statusValue, logStatus, ok := normalizeProductAuditDecision(req.Status)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "invalid product audit decision"})
 		return
 	}
-
-	statusValue := 1
-	logStatus := "pending_review"
-	switch req.Status {
-	case 1:
-		statusValue = 2
-		logStatus = "approved"
-	case 2:
-		statusValue = 4
-		logStatus = "rejected"
+	if !rejectReasonProvided(req.Status, 2, req.AuditRemark) {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "驳回原因不能为空"})
+		return
 	}
 
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
@@ -2765,7 +2767,7 @@ func AuditProduct(c *gin.Context) {
 	args := []any{statusValue}
 	if columnExists(ctx, db, "products", "audit_remark") {
 		setParts = append(setParts, "audit_remark = ?")
-		args = append(args, req.AuditRemark)
+		args = append(args, strings.TrimSpace(req.AuditRemark))
 	}
 	if columnExists(ctx, db, "products", "approved_at") {
 		if req.Status == 1 {
@@ -2817,7 +2819,7 @@ func AuditProduct(c *gin.Context) {
 			logStatus,
 			operatorID,
 			adminName,
-			req.AuditRemark,
+			strings.TrimSpace(req.AuditRemark),
 			time.Now(),
 		); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})

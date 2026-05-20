@@ -487,6 +487,25 @@ func parseLegacyAuditRemark(raw string) string {
 	return ""
 }
 
+func isEnterpriseAuditDecision(status int) bool {
+	return status == 1 || status == 2
+}
+
+func normalizeProductAuditDecision(status int) (statusValue int, logStatus string, ok bool) {
+	switch status {
+	case 1:
+		return 2, "approved", true
+	case 2:
+		return 4, "rejected", true
+	default:
+		return 0, "", false
+	}
+}
+
+func rejectReasonProvided(status, rejectStatus int, reason string) bool {
+	return status != rejectStatus || strings.TrimSpace(reason) != ""
+}
+
 func parseVerificationInfo(raw sql.NullString) enterpriseVerificationInfo {
 	if !raw.Valid || raw.String == "" {
 		return enterpriseVerificationInfo{}

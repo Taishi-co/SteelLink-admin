@@ -292,8 +292,12 @@ func auditServiceOffer(c *gin.Context, table string) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "审核状态无效，仅支持通过或驳回"})
 		return
 	}
+	if !rejectReasonProvided(statusValue, 3, auditRemark) {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "驳回原因不能为空"})
+		return
+	}
 	setParts := []string{"status = ?", "audit_remark = ?", "updated_at = ?"}
-	args := []any{statusValue, auditRemark, time.Now()}
+	args := []any{statusValue, strings.TrimSpace(auditRemark), time.Now()}
 	if statusValue == 2 {
 		setParts = append(setParts, "approved_at = ?")
 		args = append(args, time.Now())

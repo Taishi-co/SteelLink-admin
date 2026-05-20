@@ -153,8 +153,16 @@ export default function ServiceOfferAudit({ type }: { type: 'warehouse' | 'logis
           <Form.Item label="审核结果" name="status" rules={[{ required: true }]}>
             <Segmented block options={[{ label: '通过', value: 2 }, { label: '驳回', value: 3 }]} />
           </Form.Item>
-          <Form.Item label="审核备注" name="auditRemark">
-            <Input.TextArea rows={4} placeholder="请输入审核说明" />
+          <Form.Item noStyle shouldUpdate={(prev, current) => prev.status !== current.status}>
+            {({ getFieldValue }) => (
+              <Form.Item
+                label="审核备注"
+                name="auditRemark"
+                rules={getFieldValue('status') === 3 ? [{ required: true, message: '驳回时请输入审核备注' }] : []}
+              >
+                <Input.TextArea rows={4} placeholder="请输入审核说明" />
+              </Form.Item>
+            )}
           </Form.Item>
         </Form>
       </Modal>

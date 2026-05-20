@@ -67,13 +67,17 @@ export default function UserList() {
 
   const { mutate: auditIdentity } = useMutation({
     mutationFn: ({ id, data }: { id: number; data: { status: number; reject?: string } }) => userApi.auditIdentity(id, data),
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       message.success('审核完成')
       void queryClient.invalidateQueries({ queryKey: ['users'] })
       setAuditModal({ open: false, userId: 0, action: 'approve' })
       auditForm.resetFields()
       if (selectedUser) {
-        setSelectedUser({ ...selectedUser, identityStatus: 2 })
+        setSelectedUser({
+          ...selectedUser,
+          identityStatus: variables.data.status,
+          identityReject: variables.data.status === 3 ? variables.data.reject || '' : '',
+        })
       }
     },
     onError: () => message.error('审核失败'),
