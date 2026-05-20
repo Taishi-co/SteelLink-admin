@@ -210,6 +210,25 @@ CREATE TABLE IF NOT EXISTS `products` (
     INDEX `idx_deleted_at` (`deleted_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Products table';
 
+-- Product Audit Logs Table
+CREATE TABLE IF NOT EXISTS `product_audit_logs` (
+    `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    `product_id` BIGINT UNSIGNED NOT NULL COMMENT 'Product ID',
+    `product_sku_id` VARCHAR(64) DEFAULT '' COMMENT 'Product number or SKU',
+    `action` VARCHAR(64) NOT NULL DEFAULT '' COMMENT 'Audit action',
+    `status` VARCHAR(32) NOT NULL DEFAULT '' COMMENT 'Audit result',
+    `from_status` TINYINT DEFAULT NULL COMMENT 'Product status before audit',
+    `to_status` TINYINT DEFAULT NULL COMMENT 'Product status after audit',
+    `operator_id` BIGINT UNSIGNED DEFAULT 0 COMMENT 'Admin operator ID',
+    `operator_name` VARCHAR(100) DEFAULT '' COMMENT 'Admin operator name',
+    `remark` VARCHAR(500) DEFAULT '' COMMENT 'Audit remark',
+    `before_snapshot` JSON NULL COMMENT 'Product snapshot before audit',
+    `after_snapshot` JSON NULL COMMENT 'Product snapshot after audit',
+    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT 'Audit time',
+    INDEX `idx_product_audit_logs_product_id_created_at` (`product_id`, `created_at`),
+    INDEX `idx_product_audit_logs_status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Product audit logs';
+
 -- Product Categories Table (shared with SteelLink-backend)
 CREATE TABLE IF NOT EXISTS `product_categories` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,

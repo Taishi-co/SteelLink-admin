@@ -104,38 +104,59 @@ type enterpriseItem struct {
 }
 
 type productItem struct {
-	ID                    int64      `json:"id"`
-	Name                  string     `json:"name"`
-	CategoryID            *int64     `json:"categoryId,omitempty"`
-	EnterpriseID          int64      `json:"enterpriseId"`
-	Category              string     `json:"category,omitempty"`
-	SubCategory           string     `json:"subCategory,omitempty"`
-	SteelMill             string     `json:"steelMill,omitempty"`
-	GoodsType             string     `json:"goodsType,omitempty"`
-	WarehouseServiceID    int64      `json:"warehouseServiceId,omitempty"`
-	WarehouseEnterpriseID int64      `json:"warehouseEnterpriseId,omitempty"`
-	Spec                  string     `json:"spec,omitempty"`
-	Material              string     `json:"material,omitempty"`
-	WarehouseName         string     `json:"warehouseName,omitempty"`
-	WarehouseCode         string     `json:"warehouseCode,omitempty"`
-	Province              string     `json:"province,omitempty"`
-	City                  string     `json:"city,omitempty"`
-	District              string     `json:"district,omitempty"`
-	Address               string     `json:"address,omitempty"`
-	BundleNo              string     `json:"bundleNo,omitempty"`
-	Unit                  string     `json:"unit,omitempty"`
-	Price                 float64    `json:"price"`
-	Stock                 float64    `json:"stock"`
-	MinOrderQty           float64    `json:"minOrderQty"`
-	DeliveryDays          int        `json:"deliveryDays"`
-	QuoteValidity         int        `json:"quoteValidity"`
-	Description           string     `json:"description,omitempty"`
-	Images                []string   `json:"images,omitempty"`
-	Status                int        `json:"status"`
-	AuditRemark           string     `json:"auditRemark,omitempty"`
-	AuditedAt             *time.Time `json:"auditedAt,omitempty"`
-	CreatedAt             time.Time  `json:"createdAt"`
-	UpdatedAt             time.Time  `json:"updatedAt"`
+	ID                    int64                 `json:"id"`
+	Name                  string                `json:"name"`
+	CategoryID            *int64                `json:"categoryId,omitempty"`
+	EnterpriseID          int64                 `json:"enterpriseId"`
+	Category              string                `json:"category,omitempty"`
+	SubCategory           string                `json:"subCategory,omitempty"`
+	SteelMill             string                `json:"steelMill,omitempty"`
+	GoodsType             string                `json:"goodsType,omitempty"`
+	WarehouseServiceID    int64                 `json:"warehouseServiceId,omitempty"`
+	WarehouseEnterpriseID int64                 `json:"warehouseEnterpriseId,omitempty"`
+	Spec                  string                `json:"spec,omitempty"`
+	Material              string                `json:"material,omitempty"`
+	WarehouseName         string                `json:"warehouseName,omitempty"`
+	WarehouseCode         string                `json:"warehouseCode,omitempty"`
+	Province              string                `json:"province,omitempty"`
+	City                  string                `json:"city,omitempty"`
+	District              string                `json:"district,omitempty"`
+	Address               string                `json:"address,omitempty"`
+	BundleNo              string                `json:"bundleNo,omitempty"`
+	ProductNo             string                `json:"productNo,omitempty"`
+	Unit                  string                `json:"unit,omitempty"`
+	Price                 float64               `json:"price"`
+	Stock                 float64               `json:"stock"`
+	MinOrderQty           float64               `json:"minOrderQty"`
+	DeliveryDays          int                   `json:"deliveryDays"`
+	QuoteValidity         int                   `json:"quoteValidity"`
+	Description           string                `json:"description,omitempty"`
+	Images                []string              `json:"images,omitempty"`
+	Status                int                   `json:"status"`
+	AuditRemark           string                `json:"auditRemark,omitempty"`
+	AuditorID             int64                 `json:"auditorId,omitempty"`
+	AuditedAt             *time.Time            `json:"auditedAt,omitempty"`
+	AuditHistory          []productAuditLogItem `json:"auditHistory,omitempty"`
+	CreatedAt             time.Time             `json:"createdAt"`
+	UpdatedAt             time.Time             `json:"updatedAt"`
+}
+
+type productAuditSnapshot map[string]any
+
+type productAuditLogItem struct {
+	ID             int64                `json:"id"`
+	ProductID      int64                `json:"productId"`
+	ProductSkuID   string               `json:"productSkuId,omitempty"`
+	Action         string               `json:"action,omitempty"`
+	Status         string               `json:"status"`
+	FromStatus     int                  `json:"fromStatus,omitempty"`
+	ToStatus       int                  `json:"toStatus,omitempty"`
+	OperatorID     int64                `json:"operatorId,omitempty"`
+	OperatorName   string               `json:"operatorName,omitempty"`
+	Remark         string               `json:"remark,omitempty"`
+	BeforeSnapshot productAuditSnapshot `json:"beforeSnapshot,omitempty"`
+	AfterSnapshot  productAuditSnapshot `json:"afterSnapshot,omitempty"`
+	CreatedAt      time.Time            `json:"createdAt"`
 }
 
 type orderItem struct {
@@ -737,6 +758,7 @@ func AutoMigrate(db *sql.DB) {
 	}
 
 	ensureProductCategoriesTable(ctx, db)
+	ensureProductAuditLogsTable(ctx, db)
 	_ = ensureNotificationsTable(ctx, db)
 
 	if !tableExists(ctx, db, "admin_role_menus") {
@@ -883,6 +905,41 @@ func ensureProductCategoriesTable(ctx context.Context, db *sql.DB) {
 	}
 }
 
+func ensureProductAuditLogsTable(ctx context.Context, db *sql.DB) {
+	if !tableExists(ctx, db, "product_audit_logs") {
+		db.ExecContext(ctx, `CREATE TABLE product_audit_logs (
+			id BIGINT AUTO_INCREMENT PRIMARY KEY,
+			product_id BIGINT UNSIGNED NOT NULL,
+			product_sku_id VARCHAR(64) DEFAULT '',
+			action VARCHAR(64) NOT NULL DEFAULT '',
+			status VARCHAR(32) NOT NULL DEFAULT '',
+			from_status TINYINT DEFAULT NULL,
+			to_status TINYINT DEFAULT NULL,
+			operator_id BIGINT UNSIGNED DEFAULT 0,
+			operator_name VARCHAR(100) DEFAULT '',
+			remark VARCHAR(500) DEFAULT '',
+			before_snapshot JSON NULL,
+			after_snapshot JSON NULL,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			KEY idx_product_audit_logs_product_id_created_at (product_id, created_at),
+			KEY idx_product_audit_logs_status (status)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`)
+		return
+	}
+	if !columnExists(ctx, db, "product_audit_logs", "from_status") {
+		db.ExecContext(ctx, `ALTER TABLE product_audit_logs ADD COLUMN from_status TINYINT DEFAULT NULL`)
+	}
+	if !columnExists(ctx, db, "product_audit_logs", "to_status") {
+		db.ExecContext(ctx, `ALTER TABLE product_audit_logs ADD COLUMN to_status TINYINT DEFAULT NULL`)
+	}
+	if !columnExists(ctx, db, "product_audit_logs", "before_snapshot") {
+		db.ExecContext(ctx, `ALTER TABLE product_audit_logs ADD COLUMN before_snapshot JSON NULL`)
+	}
+	if !columnExists(ctx, db, "product_audit_logs", "after_snapshot") {
+		db.ExecContext(ctx, `ALTER TABLE product_audit_logs ADD COLUMN after_snapshot JSON NULL`)
+	}
+}
+
 func parseProductSpec(raw sql.NullString) productSpecInfo {
 	if !raw.Valid || raw.String == "" {
 		return productSpecInfo{}
@@ -899,6 +956,78 @@ func parseWarehouseInfo(raw sql.NullString) warehouseInfo {
 	var info warehouseInfo
 	_ = json.Unmarshal([]byte(raw.String), &info)
 	return info
+}
+
+func buildProductAuditSnapshot(item productItem) productAuditSnapshot {
+	return productAuditSnapshot{
+		"id":                    item.ID,
+		"name":                  item.Name,
+		"categoryId":            item.CategoryID,
+		"enterpriseId":          item.EnterpriseID,
+		"category":              item.Category,
+		"subCategory":           item.SubCategory,
+		"steelMill":             item.SteelMill,
+		"goodsType":             item.GoodsType,
+		"warehouseServiceId":    item.WarehouseServiceID,
+		"warehouseEnterpriseId": item.WarehouseEnterpriseID,
+		"spec":                  item.Spec,
+		"material":              item.Material,
+		"warehouseName":         item.WarehouseName,
+		"warehouseCode":         item.WarehouseCode,
+		"province":              item.Province,
+		"city":                  item.City,
+		"district":              item.District,
+		"warehouseRegion":       strings.Join(nonEmptyProductSnapshotStrings(item.Province, item.City, item.District), " / "),
+		"address":               item.Address,
+		"bundleNo":              item.BundleNo,
+		"productNo":             item.ProductNo,
+		"unit":                  item.Unit,
+		"price":                 item.Price,
+		"stock":                 item.Stock,
+		"minOrderQty":           item.MinOrderQty,
+		"deliveryDays":          item.DeliveryDays,
+		"quoteValidity":         item.QuoteValidity,
+		"description":           item.Description,
+		"images":                item.Images,
+		"status":                item.Status,
+		"auditRemark":           item.AuditRemark,
+		"auditorId":             item.AuditorID,
+		"auditedAt":             item.AuditedAt,
+		"createdAt":             item.CreatedAt,
+		"updatedAt":             item.UpdatedAt,
+	}
+}
+
+func nonEmptyProductSnapshotStrings(values ...string) []string {
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			result = append(result, value)
+		}
+	}
+	return result
+}
+
+func productAuditSnapshotJSON(snapshot productAuditSnapshot) string {
+	if snapshot == nil {
+		return ""
+	}
+	raw, err := json.Marshal(snapshot)
+	if err != nil {
+		return ""
+	}
+	return string(raw)
+}
+
+func parseProductAuditSnapshot(raw sql.NullString) productAuditSnapshot {
+	if !raw.Valid || strings.TrimSpace(raw.String) == "" {
+		return nil
+	}
+	var snapshot productAuditSnapshot
+	if err := json.Unmarshal([]byte(raw.String), &snapshot); err != nil {
+		return nil
+	}
+	return snapshot
 }
 
 func scanMenuRows(rows *sql.Rows) []menuItem {

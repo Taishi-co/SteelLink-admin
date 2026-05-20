@@ -25,7 +25,7 @@
 | 服务权限审核 | `/enterprise/services` | 申请审核 | 否 | 是 | 是 | 是 | `RequireRole(1,2,3)` |
 | 服务权限审核 | `/enterprise/:id/services` | 直接调整权限状态 | 否 | 否 | 是 | 是 | `RequireRole(1,2)` |
 | 商品管理 | `/product` | 查看 | 否 | 是 | 是 | 是 | `RequireRole(1,2,3)` |
-| 商品管理 | `/product` | 商品审核 | 否 | 是 | 是 | 是 | `RequireRole(1,2,3)` |
+| 商品管理 | `/product` | 商品审核并记录历史快照 | 否 | 是 | 是 | 是 | `RequireRole(1,2,3)` |
 | 商品管理 | `/product` | 编辑/删除 | 否 | 否 | 是 | 是 | `RequireRole(1,2)` |
 | 服务资源审核 | `/service-offers/warehouse` | 仓储资源审核 | 否 | 是 | 是 | 是 | `RequireRole(1,2,3)` |
 | 服务资源审核 | `/service-offers/logistics` | 物流资源审核 | 否 | 是 | 是 | 是 | `RequireRole(1,2,3)` |
