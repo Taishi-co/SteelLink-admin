@@ -24,6 +24,8 @@ import type { ColumnsType } from 'antd/es/table'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { productApi, ProductItem, PageParams } from '../../services/api'
 import { formatDateTime } from '../../utils/format'
+import { canAudit } from '../../utils/permissions'
+import { useAuthStore } from '../../store/useAuthStore'
 
 const statusMeta = {
   0: { color: 'default', text: '草稿' },
@@ -119,6 +121,8 @@ export default function ProductList() {
   const [auditTarget, setAuditTarget] = useState<ProductItem | null>(null)
   const [auditForm] = Form.useForm<{ status: number; auditRemark?: string }>()
   const queryClient = useQueryClient()
+  const roleId = useAuthStore((state) => state.adminInfo?.roleId)
+  const auditAllowed = canAudit(roleId)
 
   const { data, isLoading } = useQuery({
     queryKey: ['products', params],
@@ -210,19 +214,21 @@ export default function ProductList() {
           <Button type="link" size="small" onClick={() => setSelectedId(record.id)}>
             查看
           </Button>
-          <Button
-            type="link"
-            size="small"
-            onClick={() => {
-              setAuditTarget(record)
-              auditForm.setFieldsValue({
-                status: record.status === 4 ? 2 : 1,
-                auditRemark: record.auditRemark,
-              })
-            }}
-          >
-            审核
-          </Button>
+          {auditAllowed && (
+            <Button
+              type="link"
+              size="small"
+              onClick={() => {
+                setAuditTarget(record)
+                auditForm.setFieldsValue({
+                  status: record.status === 4 ? 2 : 1,
+                  auditRemark: record.auditRemark,
+                })
+              }}
+            >
+              审核
+            </Button>
+          )}
         </Space>
       ),
     },

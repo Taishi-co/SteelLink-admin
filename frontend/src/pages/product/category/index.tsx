@@ -5,6 +5,8 @@ import type { ColumnsType } from 'antd/es/table'
 import type { UploadProps } from 'antd'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { categoryApi, CategoryItem, fileApi } from '../../../services/api'
+import { isSuperAdmin } from '../../../utils/permissions'
+import { useAuthStore } from '../../../store/useAuthStore'
 
 interface CategoryFormValues {
   name: string
@@ -21,6 +23,8 @@ export default function CategoryList() {
   const [editingItem, setEditingItem] = useState<CategoryItem | null>(null)
   const [form] = Form.useForm<CategoryFormValues>()
   const queryClient = useQueryClient()
+  const roleId = useAuthStore((state) => state.adminInfo?.roleId)
+  const canManageCategory = isSuperAdmin(roleId)
 
   const { data, isLoading } = useQuery({
     queryKey: ['categories'],
@@ -122,6 +126,7 @@ export default function CategoryList() {
         const deleteButton = (
           <Button type="link" danger icon={<DeleteOutlined />} size="small" disabled={productCount > 0}>删除</Button>
         )
+        if (!canManageCategory) return '-'
         return (
           <Space>
             <Button type="link" icon={<EditOutlined />} size="small" onClick={() => openEdit(record)}>编辑</Button>
@@ -146,7 +151,7 @@ export default function CategoryList() {
 
   return (
     <>
-      <Card title="类目配置" extra={<Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>新增类目</Button>}>
+      <Card title="类目配置" extra={canManageCategory ? <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>新增类目</Button> : undefined}>
         <Table
           columns={columns}
           dataSource={data?.data.data.list || []}

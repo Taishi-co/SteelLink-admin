@@ -4,6 +4,8 @@ import type { ColumnsType } from 'antd/es/table'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { PageParams, serviceOfferApi, ServiceOfferItem } from '../../services/api'
 import { formatDateTime } from '../../utils/format'
+import { canAudit } from '../../utils/permissions'
+import { useAuthStore } from '../../store/useAuthStore'
 
 const statusMeta: Record<number, { text: string; color: string }> = {
   1: { text: '待审核', color: 'processing' },
@@ -39,6 +41,8 @@ export default function ServiceOfferAudit({ type }: { type: 'warehouse' | 'logis
   const queryClient = useQueryClient()
   const isWarehouse = type === 'warehouse'
   const isFinance = type === 'finance'
+  const roleId = useAuthStore((state) => state.adminInfo?.roleId)
+  const auditAllowed = canAudit(roleId)
 
   const { data, isLoading } = useQuery({
     queryKey: ['service-offers', type, params],
@@ -90,7 +94,7 @@ export default function ServiceOfferAudit({ type }: { type: 'warehouse' | 'logis
     {
       title: '操作',
       width: 120,
-      render: (_, record) => record.status === 1 || record.status === 3 ? (
+      render: (_, record) => auditAllowed && (record.status === 1 || record.status === 3) ? (
         <Button
           type="link"
           size="small"

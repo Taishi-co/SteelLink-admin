@@ -303,3 +303,38 @@ INSERT INTO `admin_menus` (`parent_id`, `name`, `path`, `component`, `icon`, `ty
 -- Associate all menus with super admin role
 INSERT INTO `admin_role_menus` (`role_id`, `menu_id`, `created_by`)
 SELECT 1, id, 0 FROM `admin_menus`;
+
+-- Associate default business menus with operations role
+INSERT INTO `admin_role_menus` (`role_id`, `menu_id`, `created_by`)
+SELECT 2, id, 0 FROM `admin_menus`
+WHERE `path` IN (
+    '/dashboard',
+    '/user',
+    '/enterprise',
+    '/enterprise/services',
+    '/service-offers/warehouse',
+    '/service-offers/logistics',
+    '/service-offers/finance',
+    '/product',
+    '/product/order',
+    '/product/category',
+    '/log',
+    '/notification'
+);
+
+-- Associate default audit menus with auditor role
+INSERT INTO `admin_role_menus` (`role_id`, `menu_id`, `created_by`)
+SELECT 3, id, 0 FROM `admin_menus`
+WHERE `path` IN (
+    '/dashboard',
+    '/user',
+    '/enterprise',
+    '/enterprise/services',
+    '/service-offers/warehouse',
+    '/service-offers/logistics',
+    '/service-offers/finance',
+    '/product',
+    '/product/order',
+    '/product/category',
+    '/log'
+);

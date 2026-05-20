@@ -5,6 +5,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { BreachRecordInfo, LitigationRecordInfo, LogisticsQuoteInfo, orderApi, OrderEventItem, OrderItem, OrderTimelineItem, PageParams } from '../../services/api'
 import { formatDateTime } from '../../utils/format'
 import { EyeOutlined, SearchOutlined } from '@ant-design/icons'
+import { canOperate } from '../../utils/permissions'
+import { useAuthStore } from '../../store/useAuthStore'
 
 const { Text } = Typography
 
@@ -131,6 +133,8 @@ export default function OrderList() {
   const [freezeReason, setFreezeReason] = useState('')
   const [breachDrafts, setBreachDrafts] = useState<Record<number, string>>({})
   const [litigationDrafts, setLitigationDrafts] = useState<Record<number, { status?: string; judgmentResult?: string; judgmentUrl?: string }>>({})
+  const roleId = useAuthStore((state) => state.adminInfo?.roleId)
+  const operateAllowed = canOperate(roleId)
 
   const queryParams = { ...params, keyword: keyword || undefined, status: statusFilter ? statusFilter as unknown as number : undefined, intervention: interventionOnly ? 1 : undefined }
 
@@ -319,28 +323,30 @@ export default function OrderList() {
               />
             )}
 
-            <Card size="small" title="平台处置" style={{ marginBottom: 20 }}>
-              <Space direction="vertical" style={{ width: '100%' }} size={12}>
-                <Space wrap>
-                  {orderDetail.status === 10 ? (
-                    <Button loading={unfreezeMutation.isPending} onClick={() => unfreezeMutation.mutate()}>解冻订单</Button>
-                  ) : (
-                    <Button danger loading={freezeMutation.isPending} disabled={!freezeReason.trim()} onClick={() => freezeMutation.mutate()}>冻结订单</Button>
+            {operateAllowed && (
+              <Card size="small" title="平台处置" style={{ marginBottom: 20 }}>
+                <Space direction="vertical" style={{ width: '100%' }} size={12}>
+                  <Space wrap>
+                    {orderDetail.status === 10 ? (
+                      <Button loading={unfreezeMutation.isPending} onClick={() => unfreezeMutation.mutate()}>解冻订单</Button>
+                    ) : (
+                      <Button danger loading={freezeMutation.isPending} disabled={!freezeReason.trim()} onClick={() => freezeMutation.mutate()}>冻结订单</Button>
+                    )}
+                    <Text type="secondary">冻结会暂停订单推进，并写入订单事件留痕。</Text>
+                  </Space>
+                  {orderDetail.status !== 10 && (
+                    <Input.TextArea
+                      rows={2}
+                      placeholder="填写冻结原因"
+                      value={freezeReason}
+                      onChange={(e) => setFreezeReason(e.target.value)}
+                      maxLength={500}
+                      showCount
+                    />
                   )}
-                  <Text type="secondary">冻结会暂停订单推进，并写入订单事件留痕。</Text>
                 </Space>
-                {orderDetail.status !== 10 && (
-                  <Input.TextArea
-                    rows={2}
-                    placeholder="填写冻结原因"
-                    value={freezeReason}
-                    onChange={(e) => setFreezeReason(e.target.value)}
-                    maxLength={500}
-                    showCount
-                  />
-                )}
-              </Space>
-            </Card>
+              </Card>
+            )}
             <Descriptions bordered column={2} size="small">
               <Descriptions.Item label="订单号" span={2}>{valueOf(orderDetail, 'orderNo', 'order_no')}</Descriptions.Item>
               <Descriptions.Item label="状态">
@@ -480,31 +486,35 @@ export default function OrderList() {
                       <Space direction="vertical" style={{ width: '100%' }} size={12}>
                         {record.mediationResult ? <Alert type="info" showIcon message="协调结果" description={record.mediationResult} /> : null}
                         {record.resolutionResult ? <Alert type="success" showIcon message="处理结果" description={record.resolutionResult} /> : null}
-                        <Input.TextArea
-                          rows={2}
-                          placeholder="填写平台协调或处理意见"
-                          value={breachDrafts[record.id] || ''}
-                          onChange={(e) => setBreachDrafts({ ...breachDrafts, [record.id]: e.target.value })}
-                          maxLength={1000}
-                          showCount
-                        />
-                        <Space>
-                          <Button
-                            loading={mediateMutation.isPending}
-                            disabled={!(breachDrafts[record.id] || '').trim()}
-                            onClick={() => mediateMutation.mutate({ id: record.id, result: (breachDrafts[record.id] || '').trim() })}
-                          >
-                            记录协调
-                          </Button>
-                          <Button
-                            type="primary"
-                            loading={resolveMutation.isPending}
-                            disabled={!(breachDrafts[record.id] || '').trim()}
-                            onClick={() => resolveMutation.mutate({ id: record.id, result: (breachDrafts[record.id] || '').trim() })}
-                          >
-                            完成处理
-                          </Button>
-                        </Space>
+                        {operateAllowed && (
+                          <>
+                            <Input.TextArea
+                              rows={2}
+                              placeholder="填写平台协调或处理意见"
+                              value={breachDrafts[record.id] || ''}
+                              onChange={(e) => setBreachDrafts({ ...breachDrafts, [record.id]: e.target.value })}
+                              maxLength={1000}
+                              showCount
+                            />
+                            <Space>
+                              <Button
+                                loading={mediateMutation.isPending}
+                                disabled={!(breachDrafts[record.id] || '').trim()}
+                                onClick={() => mediateMutation.mutate({ id: record.id, result: (breachDrafts[record.id] || '').trim() })}
+                              >
+                                记录协调
+                              </Button>
+                              <Button
+                                type="primary"
+                                loading={resolveMutation.isPending}
+                                disabled={!(breachDrafts[record.id] || '').trim()}
+                                onClick={() => resolveMutation.mutate({ id: record.id, result: (breachDrafts[record.id] || '').trim() })}
+                              >
+                                完成处理
+                              </Button>
+                            </Space>
+                          </>
+                        )}
                       </Space>
                     ),
                   }}
@@ -547,39 +557,41 @@ export default function OrderList() {
                             <Descriptions.Item label="诉讼描述" span={2}>{record.description}</Descriptions.Item>
                             <Descriptions.Item label="判决结果" span={2}>{record.judgmentResult || '-'}</Descriptions.Item>
                           </Descriptions>
-                          <Form layout="inline">
-                            <Form.Item label="状态">
-                              <Select
-                                style={{ width: 140 }}
-                                value={draft.status}
-                                options={litigationStatusOptions}
-                                onChange={(status) => setLitigationDrafts({ ...litigationDrafts, [record.id]: { ...draft, status } })}
-                              />
-                            </Form.Item>
-                            <Form.Item label="判决结果">
-                              <Input
-                                style={{ width: 240 }}
-                                value={draft.judgmentResult}
-                                onChange={(e) => setLitigationDrafts({ ...litigationDrafts, [record.id]: { ...draft, judgmentResult: e.target.value } })}
-                              />
-                            </Form.Item>
-                            <Form.Item label="文书 URL">
-                              <Input
-                                style={{ width: 240 }}
-                                value={draft.judgmentUrl}
-                                onChange={(e) => setLitigationDrafts({ ...litigationDrafts, [record.id]: { ...draft, judgmentUrl: e.target.value } })}
-                              />
-                            </Form.Item>
-                            <Form.Item>
-                              <Button
-                                type="primary"
-                                loading={litigationMutation.isPending}
-                                onClick={() => litigationMutation.mutate({ id: record.id, data: { status: draft.status || record.status, judgmentResult: draft.judgmentResult, judgmentUrl: draft.judgmentUrl } })}
-                              >
-                                更新
-                              </Button>
-                            </Form.Item>
-                          </Form>
+                          {operateAllowed && (
+                            <Form layout="inline">
+                              <Form.Item label="状态">
+                                <Select
+                                  style={{ width: 140 }}
+                                  value={draft.status}
+                                  options={litigationStatusOptions}
+                                  onChange={(status) => setLitigationDrafts({ ...litigationDrafts, [record.id]: { ...draft, status } })}
+                                />
+                              </Form.Item>
+                              <Form.Item label="判决结果">
+                                <Input
+                                  style={{ width: 240 }}
+                                  value={draft.judgmentResult}
+                                  onChange={(e) => setLitigationDrafts({ ...litigationDrafts, [record.id]: { ...draft, judgmentResult: e.target.value } })}
+                                />
+                              </Form.Item>
+                              <Form.Item label="文书 URL">
+                                <Input
+                                  style={{ width: 240 }}
+                                  value={draft.judgmentUrl}
+                                  onChange={(e) => setLitigationDrafts({ ...litigationDrafts, [record.id]: { ...draft, judgmentUrl: e.target.value } })}
+                                />
+                              </Form.Item>
+                              <Form.Item>
+                                <Button
+                                  type="primary"
+                                  loading={litigationMutation.isPending}
+                                  onClick={() => litigationMutation.mutate({ id: record.id, data: { status: draft.status || record.status, judgmentResult: draft.judgmentResult, judgmentUrl: draft.judgmentUrl } })}
+                                >
+                                  更新
+                                </Button>
+                              </Form.Item>
+                            </Form>
+                          )}
                         </Space>
                       )
                     },

@@ -12,6 +12,7 @@
 - [ ] 前端 `pnpm build` 已通过
 - [ ] 后端 `go test ./...` 与 `go build ./cmd/server` 已通过
 - [ ] 已确认超管、运营、审核员、普通账号的接口权限 smoke 范围
+- [ ] 已确认超管、运营、审核员的默认菜单入口和写操作按钮显隐
 - [ ] 已确认订单冻结、解冻、违约处理 smoke 范围
 - [ ] 已确认菜单和历史路径跳转 smoke 范围
 - [ ] GitHub PR 创建后，已执行 `./harness/lark-pr-doc.sh docs/features/SL-ADMIN-FLOW-BUGFIX-20260520 --pr-url <github-pr-url> --pr-title "<pr-title>"` 并写入共享飞书 PR 记录

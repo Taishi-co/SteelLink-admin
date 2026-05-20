@@ -19,6 +19,8 @@ import type { ColumnsType } from 'antd/es/table'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { enterpriseApi, EnterpriseItem, PageParams, ServicePermissionItem } from '../../services/api'
 import { formatDateTime } from '../../utils/format'
+import { canAudit, canOperate } from '../../utils/permissions'
+import { useAuthStore } from '../../store/useAuthStore'
 
 const statusMeta = {
   0: { color: 'orange', text: '待审核' },
@@ -52,6 +54,9 @@ export default function EnterpriseList() {
   const [auditForm] = Form.useForm<{ status: number; auditRemark?: string }>()
   const [serviceForm] = Form.useForm<{ status: number; reason?: string }>()
   const queryClient = useQueryClient()
+  const roleId = useAuthStore((state) => state.adminInfo?.roleId)
+  const auditAllowed = canAudit(roleId)
+  const operateAllowed = canOperate(roleId)
 
   const { data, isLoading } = useQuery({
     queryKey: ['enterprises', params],
@@ -152,19 +157,21 @@ export default function EnterpriseList() {
           <Button type="link" size="small" onClick={() => setSelectedId(record.id)}>
             查看
           </Button>
-          <Button
-            type="link"
-            size="small"
-            onClick={() => {
-              setAuditTarget(record)
-              auditForm.setFieldsValue({
-                status: record.status === 1 ? 1 : 2,
-                auditRemark: record.auditRemark,
-              })
-            }}
-          >
-            审核
-          </Button>
+          {auditAllowed && (
+            <Button
+              type="link"
+              size="small"
+              onClick={() => {
+                setAuditTarget(record)
+                auditForm.setFieldsValue({
+                  status: record.status === 1 ? 1 : 2,
+                  auditRemark: record.auditRemark,
+                })
+              }}
+            >
+              审核
+            </Button>
+          )}
         </Space>
       ),
     },
@@ -283,16 +290,18 @@ export default function EnterpriseList() {
                 {
                   title: '操作',
                   render: (_, record) => (
-                    <Button
-                      type="link"
-                      size="small"
-                      onClick={() => {
-                        setServiceTarget({ enterpriseId: selectedId!, service: record.service })
-                        serviceForm.setFieldsValue({ status: record.status || 2, reason: record.auditReason || '' })
-                      }}
-                    >
-                      控制
-                    </Button>
+                    operateAllowed ? (
+                      <Button
+                        type="link"
+                        size="small"
+                        onClick={() => {
+                          setServiceTarget({ enterpriseId: selectedId!, service: record.service })
+                          serviceForm.setFieldsValue({ status: record.status || 2, reason: record.auditReason || '' })
+                        }}
+                      >
+                        控制
+                      </Button>
+                    ) : '-'
                   ),
                 },
               ]}
