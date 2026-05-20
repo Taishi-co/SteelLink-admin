@@ -800,7 +800,8 @@ func ensureDefaultAdminMenus(ctx context.Context, db *sql.DB) {
 	ensureAdminMenu(ctx, db, productID, "类目配置", "/product/category", "AppstoreOutlined", "product:category", 3)
 
 	aiID := ensureAdminMenu(ctx, db, 0, "AI采购管理", "", "ThunderboltOutlined", "", 5)
-	ensureAdminMenu(ctx, db, aiID, "采购配置", "/ai-procurement/config", "SettingOutlined", "ai-procurement:config", 1)
+	ensureAdminMenu(ctx, db, aiID, "运营监控", "/ai-procurement/monitor", "BarChartOutlined", "ai-procurement:monitor", 1)
+	ensureAdminMenu(ctx, db, aiID, "采购配置", "/ai-procurement/config", "SettingOutlined", "ai-procurement:config", 2)
 	ensureAdminMenu(ctx, db, 0, "操作日志", "/log", "FileTextOutlined", "log", 6)
 	ensureAdminMenu(ctx, db, 0, "站内信", "/notification", "MailOutlined", "notification", 7)
 
@@ -818,6 +819,7 @@ func ensureDefaultAdminMenus(ctx context.Context, db *sql.DB) {
 			"/product",
 			"/product/order",
 			"/product/category",
+			"/ai-procurement/monitor",
 			"/log",
 			"/notification",
 		})

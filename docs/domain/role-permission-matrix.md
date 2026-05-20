@@ -34,6 +34,7 @@
 | 订单管理 | `/product/order` | 冻结/解冻/违约协调/诉讼状态 | 否 | 否 | 是 | 是 | `RequireRole(1,2)` |
 | 类目配置 | `/product/category` | 查看 | 否 | 是 | 是 | 是 | `RequireRole(1,2,3)` |
 | 类目配置 | `/product/category` | 新增/编辑/删除 | 否 | 否 | 否 | 是 | `RequireRole(1)` |
+| AI采购监控 | `/ai-procurement/monitor` | 查看 | 否 | 否 | 是 | 是 | `RequireRole(1,2)` |
 | AI采购配置 | `/ai-procurement/config` | 查看/修改 | 否 | 否 | 否 | 是 | `RequireRole(1)` |
 | 站内信 | `/notification` | 发送 | 否 | 否 | 是 | 是 | `RequireRole(1,2)` |
 | 系统管理 | `/system/*` | 管理员、角色、菜单管理 | 否 | 否 | 否 | 是 | `RequireRole(1)` |
@@ -44,7 +45,7 @@
 | 角色 | 默认菜单 |
 | --- | --- |
 | 超级管理员 | 全部菜单 |
-| 运营管理员 | `/dashboard`、业务审核页、服务资源审核页、`/product`、`/product/order`、`/product/category`、`/log`、`/notification` |
+| 运营管理员 | `/dashboard`、业务审核页、服务资源审核页、`/product`、`/product/order`、`/product/category`、`/ai-procurement/monitor`、`/log`、`/notification` |
 | 审核员 | `/dashboard`、业务审核页、服务资源审核页、`/product`、`/product/order`、`/product/category`、`/log` |
 | 普通管理端账号 | 不自动分配业务菜单；如需新增自定义查看角色，必须同步扩展后端权限策略 |
 
