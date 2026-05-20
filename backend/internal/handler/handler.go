@@ -2552,6 +2552,20 @@ func buildOrderTimeline(order orderItem) []orderTimelineItem {
 		{Key: "archive", Label: "归档", Description: "订单履约完成，关键凭证和事件归档。"},
 	}
 	for index := range steps {
+		if order.Status == 25 {
+			switch {
+			case steps[index].Key == "logistics_bidding":
+				steps[index].Label = "物流无运力"
+				steps[index].Status = "failed"
+				steps[index].Description = "无合规物流可承接，订单履约终止。"
+			case index+1 <= 6:
+				steps[index].Status = "completed"
+			default:
+				steps[index].Status = "skipped"
+			}
+			timeline = append(timeline, steps[index])
+			continue
+		}
 		steps[index].Status = timelineStepStatus(position, index+1)
 		timeline = append(timeline, steps[index])
 	}

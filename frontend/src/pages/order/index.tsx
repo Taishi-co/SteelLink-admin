@@ -36,7 +36,7 @@ const orderStatusMeta: Record<number, { color: string; text: string }> = {
   22: { color: 'purple', text: '融资审批中' },
   23: { color: 'gold', text: '待签署融资合同' },
   24: { color: 'red', text: '待重新选仓' },
-  25: { color: 'red', text: '待重新发起物流' },
+  25: { color: 'red', text: '物流无运力-已终止' },
   26: { color: 'purple', text: '待选择仓库' },
   27: { color: 'gold', text: '待物流合同签署' },
 }
@@ -44,6 +44,7 @@ const orderStatusMeta: Record<number, { color: string; text: string }> = {
 function timelineColor(status: string) {
   if (status === 'completed') return 'green'
   if (status === 'current') return 'blue'
+  if (status === 'failed') return 'red'
   if (status === 'skipped') return 'gray'
   return 'gray'
 }
@@ -62,7 +63,7 @@ const statusOptions = [
   { label: '已支付', value: '4' },
   { label: '物流竞价中', value: '16' },
   { label: '待确认物流', value: '17' },
-  { label: '待重新发起物流', value: '25' },
+  { label: '物流无运力-已终止', value: '25' },
   { label: '待物流合同签署', value: '27' },
   { label: '运输中', value: '18' },
   { label: '已送达', value: '7' },
@@ -106,6 +107,29 @@ const valueOf = <T,>(record: Record<string, unknown> | null | undefined, camel: 
 }
 
 const money = (value: unknown) => Number(value || 0).toLocaleString()
+
+const rejectedRiskKeywords = ['rejected', 'reject', 'failed', 'fail', 'denied', 'declined', 'refused', 'not_pass', 'not passed', '不通过', '未通过', '拒绝', '驳回', '额度不足']
+
+const isRejectedRiskValue = (value: unknown) => {
+  const normalized = String(value ?? '').trim().toLowerCase()
+  return normalized !== '' && rejectedRiskKeywords.some((keyword) => normalized.includes(keyword))
+}
+
+const isFinancingRiskRejected = (financingInfo: Record<string, unknown> | null, orderEvents: OrderEventItem[]) => {
+  return (
+    isRejectedRiskValue(valueOf(financingInfo, 'riskResult', 'risk_result', '')) ||
+    isRejectedRiskValue(financingInfo?.status) ||
+    orderEvents.some((event) => String(valueOf(event, 'eventType', 'event_type', '')) === 'financing_risk_rejected')
+  )
+}
+
+const financingRiskRejectReason = (financingInfo: Record<string, unknown> | null, orderEvents: OrderEventItem[]) => {
+  const riskRemark = valueOf(financingInfo, 'riskRemark', 'risk_remark', '')
+  if (riskRemark) return String(riskRemark)
+  const rejectEvent = orderEvents.find((event) => String(valueOf(event, 'eventType', 'event_type', '')) === 'financing_risk_rejected')
+  const payload = rejectEvent?.payload || {}
+  return String(payload.reason || payload.note || payload.message || '-')
+}
 
 const eventLabel: Record<string, string> = {
   warehouse_rejected: '仓储拒绝',
@@ -157,6 +181,8 @@ export default function OrderList() {
   const shipmentTask = (valueOf(orderDetail, 'shipmentTask', 'shipment_task') || null) as Record<string, unknown> | null
   const pledgeEvents = (valueOf<Record<string, unknown>[]>(orderDetail, 'pledgeEvents', 'pledge_events', []) || []) as Record<string, unknown>[]
   const orderEvents = ((orderDetail?.events || []) as OrderEventItem[])
+  const financingRejected = isFinancingRiskRejected(financingInfo, orderEvents)
+  const financingRejectedReason = financingRejected ? financingRiskRejectReason(financingInfo, orderEvents) : ''
   const breachRecords = (valueOf<BreachRecordInfo[]>(orderDetail, 'breachRecords', 'breach_records', []) || []) as BreachRecordInfo[]
   const litigationRecords = (valueOf<LitigationRecordInfo[]>(orderDetail, 'litigationRecords', 'litigation_records', []) || []) as LitigationRecordInfo[]
 
@@ -307,17 +333,19 @@ export default function OrderList() {
         {orderDetail && (
           <>
             {detailLoading && <Alert type="info" showIcon message="正在加载完整履约详情" style={{ marginBottom: 16 }} />}
-            {(remark.admin_attention || orderDetail.status === 24 || orderDetail.status === 25) && (
+            {(remark.admin_attention || orderDetail.status === 24 || orderDetail.status === 25 || financingRejected) && (
               <Alert
                 type="warning"
                 showIcon
-                message="平台需处理事项"
+                message={orderDetail.status === 25 || financingRejected ? '主流程终止事项' : '平台需处理事项'}
                 description={
                   orderDetail.status === 24
                     ? `仓储已拒绝，需协助买方重新选择仓储。原因：${remark.warehouse_reject_note || remark.condition_note || '-'}`
                     : orderDetail.status === 25
-                      ? `物流反馈无运力，需协助卖方重新发起物流。原因：${remark.logistics_no_capacity_reason || '-'}`
-                      : '该订单标记为需要平台关注，请查看下方事件记录。'
+                      ? `物流反馈无运力，订单履约已终止。原因：${remark.logistics_no_capacity_reason || '-'}`
+                      : financingRejected
+                        ? `资金方风控拒绝或额度不足，托盘垫资流程已终止。原因：${financingRejectedReason || '-'}`
+                        : '该订单标记为需要平台关注，请查看下方事件记录。'
                 }
                 style={{ marginBottom: 16 }}
               />
@@ -386,7 +414,7 @@ export default function OrderList() {
 
             {financingInfo && (
               <Descriptions bordered column={2} size="small" title="资金与质押" style={{ marginTop: 20 }}>
-                <Descriptions.Item label="融资状态"><Tag color="purple">{String(financingInfo.status || '-')}</Tag></Descriptions.Item>
+                <Descriptions.Item label="融资状态"><Tag color={financingRejected ? 'red' : 'purple'}>{String(financingInfo.status || '-')}</Tag></Descriptions.Item>
                 <Descriptions.Item label="资金方企业 ID">{valueOf(financingInfo, 'fundingEnterpriseId', 'funding_enterprise_id', '-')}</Descriptions.Item>
                 <Descriptions.Item label="申请金额">{money(valueOf(financingInfo, 'requestedAmount', 'requested_amount', 0))} 元</Descriptions.Item>
                 <Descriptions.Item label="授信金额">{money(valueOf(financingInfo, 'approvedAmount', 'approved_amount', 0))} 元</Descriptions.Item>
@@ -649,16 +677,17 @@ export default function OrderList() {
               <div style={{ marginTop: 24 }}>
                 <Typography.Text strong style={{ fontSize: 14 }}>交易履约说明</Typography.Text>
                 <div style={{ marginTop: 8, color: '#666', fontSize: 13, lineHeight: 1.8 }}>
+                  {financingRejected && '资金方风控拒绝或额度不足，托盘垫资流程已终止。'}
                   {orderDetail.status === 12 && '订单等待买方选择目的地仓储。'}
                   {orderDetail.status === 13 && '订单已进入仓库确认阶段，仓储方需核验仓库条件并反馈。'}
                   {orderDetail.status === 14 && '仓储方已确认仓库条件，等待卖方确认价格、数量和交付条款。'}
                   {orderDetail.status === 15 && '卖方已确认条款，等待买方最终确认订单。'}
-                  {orderDetail.status === 22 && '买方已申请托盘融资，资金方正在进行风控审批。'}
-                  {orderDetail.status === 23 && '融资已审批通过，等待买方签署债务合同并支付手续费。'}
+                  {!financingRejected && orderDetail.status === 22 && '买方已申请托盘融资，资金方正在进行风控审批。'}
+                  {!financingRejected && orderDetail.status === 23 && '融资已审批通过，等待买方签署债务合同并支付手续费。'}
                   {orderDetail.status === 24 && '仓储方已拒绝当前仓储条件，平台需跟进并引导买方重新选仓。'}
                   {orderDetail.status === 16 && '卖方已发起物流竞价，等待物流方报价。'}
                   {orderDetail.status === 17 && '物流方已报价，等待合同约定的运费承担方确认报价。'}
-                  {orderDetail.status === 25 && '物流反馈暂无运力，平台需跟进并引导卖方重新发起物流。'}
+                  {orderDetail.status === 25 && '物流反馈暂无运力，订单履约已终止。'}
                   {orderDetail.status === 18 && '物流资源已锁定，运输任务进行中。'}
                   {orderDetail.status === 19 && '买方已确认收货，等待卖方对账确认。'}
                   {orderDetail.status === 20 && '卖方已完成对账确认，等待归档。'}

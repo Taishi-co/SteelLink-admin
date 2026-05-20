@@ -38,6 +38,14 @@ func TestBuildOrderTimelineDoesNotMarkShippingCompleteForWarehouseReselect(t *te
 	assertTimelineStatus(t, timeline, "receipt", "pending")
 }
 
+func TestBuildOrderTimelineMarksLogisticsNoCapacityAsTerminal(t *testing.T) {
+	timeline := buildOrderTimeline(orderItem{Status: 25})
+	assertTimelineStatus(t, timeline, "payment_finance", "completed")
+	assertTimelineStatus(t, timeline, "logistics_bidding", "failed")
+	assertTimelineStatus(t, timeline, "logistics_confirm", "skipped")
+	assertTimelineStatus(t, timeline, "shipping", "skipped")
+}
+
 func assertTimelineStatus(t *testing.T, timeline []orderTimelineItem, key string, want string) {
 	t.Helper()
 	for _, item := range timeline {
