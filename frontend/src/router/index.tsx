@@ -91,8 +91,16 @@ const router = createBrowserRouter([
         element: <UserList />,
       },
       {
+        path: 'user/list',
+        element: <Navigate to="/user" replace />,
+      },
+      {
         path: 'enterprise',
         element: <EnterpriseList />,
+      },
+      {
+        path: 'enterprise/list',
+        element: <Navigate to="/enterprise" replace />,
       },
       {
         path: 'enterprise/services',
@@ -104,6 +112,10 @@ const router = createBrowserRouter([
           {
             index: true,
             element: <ProductList />,
+          },
+          {
+            path: 'list',
+            element: <Navigate to="/product" replace />,
           },
           {
             path: 'order',
