@@ -1778,6 +1778,10 @@ func ListOrders(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 			return
 		}
+		if err := fillOrderTerminationSummary(ctx, db, &item); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+			return
+		}
 		items = append(items, item)
 	}
 
@@ -1927,6 +1931,87 @@ func fillOrderDetail(ctx context.Context, db *sql.DB, item *orderItem) error {
 		}
 		item.LitigationRecords = records
 	}
+	item.TerminationReason = buildOrderTerminationReason(*item)
+	return nil
+}
+
+func fillOrderTerminationSummary(ctx context.Context, db *sql.DB, item *orderItem) error {
+	summary := *item
+	if tableExists(ctx, db, "order_events") {
+		events, err := listOrderTerminationEvents(ctx, db, item.ID)
+		if err != nil {
+			return err
+		}
+		summary.Events = events
+	}
+	if tableExists(ctx, db, "order_financing_requests") {
+		info, err := getOrderFinancingInfo(ctx, db, item.ID)
+		if err != nil {
+			return err
+		}
+		summary.FinancingInfo = info
+	}
+	item.TerminationReason = buildOrderTerminationReason(summary)
+	return nil
+}
+
+func buildOrderTerminationReason(order orderItem) *terminationReason {
+	needsIntervention := truthyValue(order.Remark["admin_attention"])
+	if event := latestMatchingOrderEvent(order.Events, isLogisticsNoCapacityEvent); order.Status == 25 || event != nil || mapString(order.Remark, "logistics_no_capacity_reason", "logisticsNoCapacityReason") != "" {
+		return &terminationReason{
+			Code:              "logistics_no_capacity",
+			Label:             "物流无运力-已终止",
+			Party:             "logistics",
+			PartyLabel:        "物流方",
+			Reason:            firstNonEmpty(mapString(order.Remark, "logistics_no_capacity_reason", "logisticsNoCapacityReason"), eventPayloadString(event, "reason", "note", "message"), "无合规物流可承接"),
+			Source:            "logistics",
+			EventType:         eventTypeOf(event),
+			NeedsIntervention: needsIntervention,
+			CreatedAt:         eventCreatedAt(event),
+		}
+	}
+	if event := latestMatchingOrderEvent(order.Events, isFinancingRiskRejectedEvent); financingInfoRejected(order.FinancingInfo) || event != nil {
+		return &terminationReason{
+			Code:              "financing_risk_rejected",
+			Label:             "资金驳回-已终止",
+			Party:             "funding",
+			PartyLabel:        "资金方",
+			Reason:            firstNonEmpty(mapString(order.FinancingInfo, "risk_remark", "riskRemark"), eventPayloadString(event, "reason", "note", "message"), "风控不通过或额度不足"),
+			Source:            "financing",
+			EventType:         eventTypeOf(event),
+			NeedsIntervention: needsIntervention,
+			CreatedAt:         eventCreatedAt(event),
+		}
+	}
+	if event := latestMatchingOrderEvent(order.Events, isSellerRejectedEvent); event != nil || mapString(order.Remark, "seller_reject_reason", "sellerRejectReason", "seller_rejected_reason", "sellerRejectedReason", "no_stock_reason", "noStockReason") != "" {
+		return &terminationReason{
+			Code:              "seller_rejected",
+			Label:             "卖方拒单-已终止",
+			Party:             "seller",
+			PartyLabel:        "卖方",
+			Reason:            firstNonEmpty(mapString(order.Remark, "seller_reject_reason", "sellerRejectReason", "seller_rejected_reason", "sellerRejectedReason", "no_stock_reason", "noStockReason"), eventPayloadString(event, "reason", "note", "message"), "卖方拒绝确认订单"),
+			Source:            "order_event",
+			EventType:         eventTypeOf(event),
+			NeedsIntervention: needsIntervention,
+			CreatedAt:         eventCreatedAt(event),
+		}
+	}
+	if event := latestMatchingOrderEvent(order.Events, isBuyerCancelledEvent); event != nil || mapString(order.Remark, "buyer_cancel_reason", "buyerCancelReason") != "" {
+		return &terminationReason{
+			Code:              "buyer_cancelled",
+			Label:             "买方取消-已终止",
+			Party:             "buyer",
+			PartyLabel:        "买方",
+			Reason:            firstNonEmpty(mapString(order.Remark, "buyer_cancel_reason", "buyerCancelReason", "cancel_reason", "cancelReason", "cancellation_reason", "cancellationReason"), eventPayloadString(event, "reason", "note", "message"), "买方取消订单"),
+			Source:            "order_event",
+			EventType:         eventTypeOf(event),
+			NeedsIntervention: needsIntervention,
+			CreatedAt:         eventCreatedAt(event),
+		}
+	}
+	if order.Status == 9 {
+		return cancelledOrderTerminationReason(order, needsIntervention)
+	}
 	return nil
 }
 
@@ -1955,6 +2040,175 @@ func listOrderEvents(ctx context.Context, db *sql.DB, orderID int64) ([]orderEve
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+func listOrderTerminationEvents(ctx context.Context, db *sql.DB, orderID int64) ([]orderEventItem, error) {
+	rows, err := db.QueryContext(ctx, `
+		SELECT id, order_id, COALESCE(order_no, ''), event_type, COALESCE(actor_user_id, 0),
+		       COALESCE(actor_enterprise_id, 0), COALESCE(actor_service, ''), COALESCE(from_status, 0),
+		       COALESCE(to_status, 0), payload, created_at
+		FROM order_events
+		WHERE order_id = ?
+		  AND (
+			event_type IN ('logistics_no_capacity', 'financing_risk_rejected')
+			OR event_type LIKE '%cancel%'
+			OR event_type LIKE '%reject%'
+			OR event_type LIKE '%refuse%'
+			OR event_type LIKE '%no_stock%'
+		  )
+		ORDER BY id DESC
+		LIMIT 20`, orderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]orderEventItem, 0)
+	for rows.Next() {
+		var item orderEventItem
+		var payload sql.NullString
+		if err := rows.Scan(&item.ID, &item.OrderID, &item.OrderNo, &item.EventType, &item.ActorUserID, &item.ActorEnterpriseID, &item.ActorService, &item.FromStatus, &item.ToStatus, &payload, &item.CreatedAt); err != nil {
+			return nil, err
+		}
+		item.Payload = parseJSONMap(payload)
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func latestMatchingOrderEvent(events []orderEventItem, match func(orderEventItem) bool) *orderEventItem {
+	for index := range events {
+		if match(events[index]) {
+			return &events[index]
+		}
+	}
+	return nil
+}
+
+func isLogisticsNoCapacityEvent(event orderEventItem) bool {
+	eventType := strings.ToLower(event.EventType)
+	return eventType == "logistics_no_capacity" || strings.Contains(eventType, "no_capacity")
+}
+
+func isFinancingRiskRejectedEvent(event orderEventItem) bool {
+	eventType := strings.ToLower(event.EventType)
+	return eventType == "financing_risk_rejected" || (strings.Contains(eventType, "financ") && strings.Contains(eventType, "reject"))
+}
+
+func isSellerRejectedEvent(event orderEventItem) bool {
+	eventType := strings.ToLower(event.EventType)
+	party := strings.ToLower(firstNonEmpty(mapString(event.Payload, "party", "cancel_party", "cancelParty", "actor_role", "actorRole"), event.ActorService))
+	if strings.Contains(party, "seller") && (strings.Contains(eventType, "reject") || strings.Contains(eventType, "refuse") || strings.Contains(eventType, "cancel") || strings.Contains(eventType, "no_stock")) {
+		return true
+	}
+	return strings.Contains(eventType, "seller") && (strings.Contains(eventType, "reject") || strings.Contains(eventType, "refuse") || strings.Contains(eventType, "cancel") || strings.Contains(eventType, "no_stock"))
+}
+
+func isBuyerCancelledEvent(event orderEventItem) bool {
+	eventType := strings.ToLower(event.EventType)
+	party := strings.ToLower(firstNonEmpty(mapString(event.Payload, "party", "cancel_party", "cancelParty", "actor_role", "actorRole"), event.ActorService))
+	if strings.Contains(party, "buyer") && strings.Contains(eventType, "cancel") {
+		return true
+	}
+	return strings.Contains(eventType, "buyer") && (strings.Contains(eventType, "cancel") || strings.Contains(eventType, "withdraw"))
+}
+
+func financingInfoRejected(info map[string]any) bool {
+	return rejectedValue(mapString(info, "risk_result", "riskResult")) || rejectedValue(mapString(info, "status"))
+}
+
+func rejectedValue(value string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	if normalized == "" {
+		return false
+	}
+	for _, keyword := range []string{"rejected", "reject", "failed", "fail", "denied", "declined", "refused", "not_pass", "not passed", "不通过", "未通过", "拒绝", "驳回", "额度不足"} {
+		if strings.Contains(normalized, keyword) {
+			return true
+		}
+	}
+	return false
+}
+
+func cancelledOrderTerminationReason(order orderItem, needsIntervention bool) *terminationReason {
+	party := strings.ToLower(firstNonEmpty(mapString(order.Remark, "termination_party", "terminationParty", "cancel_party", "cancelParty", "party"), ""))
+	reason := firstNonEmpty(mapString(order.Remark, "termination_reason", "terminationReason", "cancel_reason", "cancelReason", "cancellation_reason", "cancellationReason"), "订单已取消或交易终止")
+	if strings.Contains(party, "seller") {
+		return &terminationReason{Code: "seller_rejected", Label: "卖方拒单-已终止", Party: "seller", PartyLabel: "卖方", Reason: reason, Source: "order_status", NeedsIntervention: needsIntervention}
+	}
+	if strings.Contains(party, "buyer") {
+		return &terminationReason{Code: "buyer_cancelled", Label: "买方取消-已终止", Party: "buyer", PartyLabel: "买方", Reason: reason, Source: "order_status", NeedsIntervention: needsIntervention}
+	}
+	return &terminationReason{Code: "cancelled", Label: "订单取消-已终止", Reason: reason, Source: "order_status", NeedsIntervention: needsIntervention}
+}
+
+func mapString(values map[string]any, keys ...string) string {
+	if values == nil {
+		return ""
+	}
+	for _, key := range keys {
+		switch value := values[key].(type) {
+		case string:
+			if strings.TrimSpace(value) != "" {
+				return strings.TrimSpace(value)
+			}
+		case fmt.Stringer:
+			if strings.TrimSpace(value.String()) != "" {
+				return strings.TrimSpace(value.String())
+			}
+		case float64, int, int64, bool:
+			return fmt.Sprint(value)
+		}
+	}
+	return ""
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
+func truthyValue(value any) bool {
+	switch typed := value.(type) {
+	case bool:
+		return typed
+	case string:
+		normalized := strings.ToLower(strings.TrimSpace(typed))
+		return normalized == "true" || normalized == "1" || normalized == "yes" || normalized == "y"
+	case float64:
+		return typed != 0
+	case int:
+		return typed != 0
+	case int64:
+		return typed != 0
+	default:
+		return false
+	}
+}
+
+func eventPayloadString(event *orderEventItem, keys ...string) string {
+	if event == nil {
+		return ""
+	}
+	return mapString(event.Payload, keys...)
+}
+
+func eventTypeOf(event *orderEventItem) string {
+	if event == nil {
+		return ""
+	}
+	return event.EventType
+}
+
+func eventCreatedAt(event *orderEventItem) *time.Time {
+	if event == nil {
+		return nil
+	}
+	return &event.CreatedAt
 }
 
 func getOrderFinancingInfo(ctx context.Context, db *sql.DB, orderID int64) (map[string]any, error) {

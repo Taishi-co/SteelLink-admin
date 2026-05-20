@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Alert, Card, Table, Tag, Input, Select, Space, Button, Descriptions, Drawer, Typography, Timeline, Divider, Form, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { BreachRecordInfo, LitigationRecordInfo, LogisticsQuoteInfo, orderApi, OrderEventItem, OrderItem, OrderTimelineItem, PageParams } from '../../services/api'
+import { BreachRecordInfo, LitigationRecordInfo, LogisticsQuoteInfo, orderApi, OrderEventItem, OrderItem, OrderTerminationReason, OrderTimelineItem, PageParams } from '../../services/api'
 import { formatDateTime } from '../../utils/format'
 import { EyeOutlined, SearchOutlined } from '@ant-design/icons'
 import { canOperate } from '../../utils/permissions'
@@ -131,6 +131,67 @@ const financingRiskRejectReason = (financingInfo: Record<string, unknown> | null
   return String(payload.reason || payload.note || payload.message || '-')
 }
 
+const getTerminationReason = (
+  order: OrderItem | null | undefined,
+  financingInfo: Record<string, unknown> | null = null,
+  orderEvents: OrderEventItem[] = [],
+): OrderTerminationReason | null => {
+  const provided = valueOf<OrderTerminationReason>(order, 'terminationReason', 'termination_reason')
+  if (provided?.code || provided?.label) return provided
+  if (!order) return null
+  if (order.status === 25) {
+    const remark = (order.remark || {}) as Record<string, unknown>
+    return {
+      code: 'logistics_no_capacity',
+      label: '物流无运力-已终止',
+      party: 'logistics',
+      partyLabel: '物流方',
+      reason: String(remark.logistics_no_capacity_reason || '-'),
+      source: 'frontend_fallback',
+      needsIntervention: Boolean(remark.admin_attention),
+    }
+  }
+  if (isFinancingRiskRejected(financingInfo, orderEvents)) {
+    return {
+      code: 'financing_risk_rejected',
+      label: '资金驳回-已终止',
+      party: 'funding',
+      partyLabel: '资金方',
+      reason: financingRiskRejectReason(financingInfo, orderEvents),
+      source: 'frontend_fallback',
+      needsIntervention: Boolean(order.remark?.admin_attention),
+    }
+  }
+  if (order.status === 9) {
+    return {
+      code: 'cancelled',
+      label: '订单取消-已终止',
+      reason: '订单已取消或交易终止',
+      source: 'frontend_fallback',
+      needsIntervention: Boolean(order.remark?.admin_attention),
+    }
+  }
+  return null
+}
+
+const terminationColor = (reason: OrderTerminationReason) => {
+  if (reason.needsIntervention) return 'volcano'
+  if (reason.code === 'buyer_cancelled' || reason.code === 'cancelled') return 'default'
+  return 'red'
+}
+
+const terminationDescription = (reason: OrderTerminationReason) => {
+  const parts = [reason.partyLabel, reason.reason].filter(Boolean)
+  return parts.length > 0 ? parts.join(' / ') : '-'
+}
+
+const terminationAlertText = (reason: OrderTerminationReason) => {
+  const party = reason.partyLabel ? `触发方：${reason.partyLabel}。` : ''
+  const detail = reason.reason ? `原因：${reason.reason}。` : ''
+  const action = reason.needsIntervention ? '需要平台后续介入。' : '主流程无需继续推进。'
+  return `${reason.label}。${party}${detail}${action}`
+}
+
 const eventLabel: Record<string, string> = {
   warehouse_rejected: '仓储拒绝',
   warehouse_reselected: '重新选仓',
@@ -182,7 +243,7 @@ export default function OrderList() {
   const pledgeEvents = (valueOf<Record<string, unknown>[]>(orderDetail, 'pledgeEvents', 'pledge_events', []) || []) as Record<string, unknown>[]
   const orderEvents = ((orderDetail?.events || []) as OrderEventItem[])
   const financingRejected = isFinancingRiskRejected(financingInfo, orderEvents)
-  const financingRejectedReason = financingRejected ? financingRiskRejectReason(financingInfo, orderEvents) : ''
+  const terminationReason = getTerminationReason(orderDetail, financingInfo, orderEvents)
   const breachRecords = (valueOf<BreachRecordInfo[]>(orderDetail, 'breachRecords', 'breach_records', []) || []) as BreachRecordInfo[]
   const litigationRecords = (valueOf<LitigationRecordInfo[]>(orderDetail, 'litigationRecords', 'litigation_records', []) || []) as LitigationRecordInfo[]
 
@@ -249,6 +310,19 @@ export default function OrderList() {
       },
     },
     {
+      title: '终止原因', key: 'terminationReason', width: 180,
+      render: (_, record) => {
+        const reason = getTerminationReason(record)
+        if (!reason) return <Text type="secondary">-</Text>
+        return (
+          <Space direction="vertical" size={0}>
+            <Tag color={terminationColor(reason)}>{reason.label}</Tag>
+            <Text type="secondary" style={{ fontSize: 12 }}>{terminationDescription(reason)}</Text>
+          </Space>
+        )
+      },
+    },
+    {
       title: '创建时间', key: 'createdAt', width: 170,
       render: (_, r) => formatDateTime(valueOf<string>(r, 'createdAt', 'created_at')),
     },
@@ -296,7 +370,7 @@ export default function OrderList() {
           dataSource={data?.data.data.list || []}
           rowKey="id"
           loading={isLoading}
-          scroll={{ x: 1200 }}
+          scroll={{ x: 1380 }}
           expandable={{
             expandedRowRender: (record) => (
               <Timeline
@@ -333,19 +407,17 @@ export default function OrderList() {
         {orderDetail && (
           <>
             {detailLoading && <Alert type="info" showIcon message="正在加载完整履约详情" style={{ marginBottom: 16 }} />}
-            {(remark.admin_attention || orderDetail.status === 24 || orderDetail.status === 25 || financingRejected) && (
+            {(remark.admin_attention || orderDetail.status === 24 || terminationReason) && (
               <Alert
                 type="warning"
                 showIcon
-                message={orderDetail.status === 25 || financingRejected ? '主流程终止事项' : '平台需处理事项'}
+                message={terminationReason ? '主流程终止事项' : '平台需处理事项'}
                 description={
-                  orderDetail.status === 24
+                  terminationReason
+                    ? terminationAlertText(terminationReason)
+                    : orderDetail.status === 24
                     ? `仓储已拒绝，需协助买方重新选择仓储。原因：${remark.warehouse_reject_note || remark.condition_note || '-'}`
-                    : orderDetail.status === 25
-                      ? `物流反馈无运力，订单履约已终止。原因：${remark.logistics_no_capacity_reason || '-'}`
-                      : financingRejected
-                        ? `资金方风控拒绝或额度不足，托盘垫资流程已终止。原因：${financingRejectedReason || '-'}`
-                        : '该订单标记为需要平台关注，请查看下方事件记录。'
+                    : '该订单标记为需要平台关注，请查看下方事件记录。'
                 }
                 style={{ marginBottom: 16 }}
               />
@@ -381,6 +453,15 @@ export default function OrderList() {
                 <Tag color={orderStatusMeta[orderDetail.status]?.color}>{orderStatusMeta[orderDetail.status]?.text}</Tag>
               </Descriptions.Item>
               <Descriptions.Item label="币种">{orderDetail.currency || 'CNY'}</Descriptions.Item>
+              {terminationReason && (
+                <Descriptions.Item label="终止原因" span={2}>
+                  <Space wrap>
+                    <Tag color={terminationColor(terminationReason)}>{terminationReason.label}</Tag>
+                    <Text type="secondary">{terminationDescription(terminationReason)}</Text>
+                    {terminationReason.needsIntervention ? <Tag color="volcano">需平台介入</Tag> : null}
+                  </Space>
+                </Descriptions.Item>
+              )}
             </Descriptions>
 
             <Descriptions bordered column={2} size="small" title="买方信息" style={{ marginTop: 20 }}>

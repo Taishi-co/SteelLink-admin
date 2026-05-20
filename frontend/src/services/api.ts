@@ -428,6 +428,8 @@ export interface OrderItem {
   createdAt: string
   timeline?: OrderTimelineItem[]
   remark?: Record<string, unknown>
+  terminationReason?: OrderTerminationReason
+  termination_reason?: OrderTerminationReason
   financingInfo?: FinancingRequestInfo
   financing_info?: FinancingRequestInfo
   logisticsBidding?: LogisticsBiddingInfo
@@ -443,6 +445,18 @@ export interface OrderItem {
   breach_records?: BreachRecordInfo[]
   litigationRecords?: LitigationRecordInfo[]
   litigation_records?: LitigationRecordInfo[]
+}
+
+export interface OrderTerminationReason {
+  code: string
+  label: string
+  party?: string
+  partyLabel?: string
+  reason?: string
+  source?: string
+  eventType?: string
+  needsIntervention: boolean
+  createdAt?: string
 }
 
 export interface OrderTimelineItem {
