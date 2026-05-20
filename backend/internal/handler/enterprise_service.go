@@ -243,6 +243,10 @@ func AuditEnterpriseServiceApplication(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "状态值无效，仅支持 2(通过) 或 3(驳回)"})
 		return
 	}
+	if !rejectReasonProvided(req.Status, 3, req.Reason) {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "驳回原因不能为空"})
+		return
+	}
 
 	adminID, _ := c.Get("admin_id")
 	adminIDValue := normalizeAdminID(adminID)
@@ -258,7 +262,7 @@ func AuditEnterpriseServiceApplication(c *gin.Context) {
 
 	now := time.Now()
 	if _, err := db.ExecContext(ctx, `UPDATE enterprise_service_applications SET status=?, audit_reason=?, audited_by=?, audited_at=?, updated_at=NOW() WHERE id=? AND deleted_at IS NULL`,
-		req.Status, req.Reason, adminIDValue, now, id); err != nil {
+		req.Status, strings.TrimSpace(req.Reason), adminIDValue, now, id); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 		return
 	}
@@ -268,7 +272,7 @@ func AuditEnterpriseServiceApplication(c *gin.Context) {
 	if req.Status == 2 {
 		approvedAt = sql.NullTime{Time: now, Valid: true}
 	}
-	if err := upsertEnterpriseServicePermission(ctx, db, enterpriseID, enterpriseCode, service, permissionStatus, req.Reason, approvedAt, adminIDValue); err != nil {
+	if err := upsertEnterpriseServicePermission(ctx, db, enterpriseID, enterpriseCode, service, permissionStatus, strings.TrimSpace(req.Reason), approvedAt, adminIDValue); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 		return
 	}
@@ -289,6 +293,10 @@ func UpdateEnterpriseServicePermission(c *gin.Context) {
 	}
 	if err := c.ShouldBindJSON(&req); err != nil || (req.Status != 2 && req.Status != 3 && req.Status != 4) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "状态值无效，仅支持 2/3/4"})
+		return
+	}
+	if req.Status != 2 && strings.TrimSpace(req.Reason) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "驳回或暂停原因不能为空"})
 		return
 	}
 
@@ -315,7 +323,7 @@ func UpdateEnterpriseServicePermission(c *gin.Context) {
 	if req.Status == 2 {
 		approvedAt = sql.NullTime{Time: now, Valid: true}
 	}
-	if err := upsertEnterpriseServicePermission(ctx, db, enterpriseID, enterpriseCode, service, req.Status, req.Reason, approvedAt, normalizeAdminID(adminID)); err != nil {
+	if err := upsertEnterpriseServicePermission(ctx, db, enterpriseID, enterpriseCode, service, req.Status, strings.TrimSpace(req.Reason), approvedAt, normalizeAdminID(adminID)); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 		return
 	}

@@ -469,8 +469,16 @@ export default function ProductList() {
               ]}
             />
           </Form.Item>
-          <Form.Item label="审核备注" name="auditRemark">
-            <Input.TextArea rows={4} placeholder="请输入审核说明，方便后续追踪与沟通。" />
+          <Form.Item noStyle shouldUpdate={(prev, current) => prev.status !== current.status}>
+            {({ getFieldValue }) => (
+              <Form.Item
+                label="审核备注"
+                name="auditRemark"
+                rules={getFieldValue('status') === 2 ? [{ required: true, message: '驳回时请输入审核备注' }] : []}
+              >
+                <Input.TextArea rows={4} placeholder="请输入审核说明，方便后续追踪与沟通。" />
+              </Form.Item>
+            )}
           </Form.Item>
         </Form>
       </Modal>

@@ -191,8 +191,16 @@ export default function EnterpriseServiceApplications() {
           <Form.Item label="审核结果" name="status" rules={[{ required: true }]}>
             <Segmented block options={[{ label: '通过', value: 2 }, { label: '驳回', value: 3 }]} />
           </Form.Item>
-          <Form.Item label="审核意见" name="reason">
-            <Input.TextArea rows={4} placeholder="请输入审核意见" />
+          <Form.Item noStyle shouldUpdate={(prev, current) => prev.status !== current.status}>
+            {({ getFieldValue }) => (
+              <Form.Item
+                label="审核意见"
+                name="reason"
+                rules={getFieldValue('status') === 3 ? [{ required: true, message: '驳回时请输入审核意见' }] : []}
+              >
+                <Input.TextArea rows={4} placeholder="请输入审核意见" />
+              </Form.Item>
+            )}
           </Form.Item>
         </Form>
       </Modal>
