@@ -528,6 +528,10 @@ func GetMyMenus(c *gin.Context) {
 	if v, ok := roleID.(int); ok {
 		intRoleID = v
 	}
+	if intRoleID != 1 && intRoleID != 2 && intRoleID != 3 {
+		c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": []interface{}{}})
+		return
+	}
 
 	db := database.GetDB()
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
@@ -2509,6 +2513,19 @@ func restoreStatusFromFreezePayload(payload sql.NullString) (int, bool) {
 	return targetStatus, true
 }
 
+func isTerminalOrderStatus(status int) bool {
+	switch status {
+	case 8, 9, 21:
+		return true
+	default:
+		return false
+	}
+}
+
+func canFreezeOrderStatus(status int) bool {
+	return status != 10 && !isTerminalOrderStatus(status)
+}
+
 // FreezeOrder freezes an order for platform operation intervention.
 func FreezeOrder(c *gin.Context) {
 	db := database.GetDB()
@@ -2540,6 +2557,10 @@ func FreezeOrder(c *gin.Context) {
 	}
 	if fromStatus == 10 {
 		c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": true})
+		return
+	}
+	if !canFreezeOrderStatus(fromStatus) {
+		c.JSON(http.StatusConflict, gin.H{"code": 409, "message": "terminal order cannot be frozen"})
 		return
 	}
 	if _, err := db.ExecContext(ctx, `UPDATE orders SET status = 10, updated_at = NOW() WHERE id = ?`, orderID); err != nil {

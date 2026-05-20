@@ -38,6 +38,22 @@ func TestBuildOrderTimelineDoesNotMarkShippingCompleteForWarehouseReselect(t *te
 	assertTimelineStatus(t, timeline, "receipt", "pending")
 }
 
+func TestCanFreezeOrderStatusRejectsTerminalStatuses(t *testing.T) {
+	for _, status := range []int{8, 9, 21} {
+		if canFreezeOrderStatus(status) {
+			t.Fatalf("status %d should not be freezable", status)
+		}
+	}
+}
+
+func TestCanFreezeOrderStatusAllowsActiveStatuses(t *testing.T) {
+	for _, status := range []int{1, 13, 22, 24} {
+		if !canFreezeOrderStatus(status) {
+			t.Fatalf("status %d should be freezable", status)
+		}
+	}
+}
+
 func TestBuildOrderTimelineMarksLogisticsNoCapacityAsTerminal(t *testing.T) {
 	timeline := buildOrderTimeline(orderItem{Status: 25})
 	assertTimelineStatus(t, timeline, "payment_finance", "completed")

@@ -76,6 +76,9 @@ const statusOptions = [
   { label: '异常', value: '11' },
 ]
 
+const terminalOrderStatuses = new Set([8, 9, 21])
+const canFreezeOrderStatus = (status: number) => status !== 10 && !terminalOrderStatuses.has(status)
+
 const breachStatusMeta: Record<string, { color: string; text: string }> = {
   submitted: { color: 'orange', text: '已提交' },
   under_review: { color: 'gold', text: '审核中' },
@@ -246,6 +249,7 @@ export default function OrderList() {
   const terminationReason = getTerminationReason(orderDetail, financingInfo, orderEvents)
   const breachRecords = (valueOf<BreachRecordInfo[]>(orderDetail, 'breachRecords', 'breach_records', []) || []) as BreachRecordInfo[]
   const litigationRecords = (valueOf<LitigationRecordInfo[]>(orderDetail, 'litigationRecords', 'litigation_records', []) || []) as LitigationRecordInfo[]
+  const freezeAllowedForStatus = orderDetail ? canFreezeOrderStatus(orderDetail.status) : false
 
   const refreshOrderDetail = () => {
     queryClient.invalidateQueries({ queryKey: ['orders'] })
@@ -429,12 +433,20 @@ export default function OrderList() {
                   <Space wrap>
                     {orderDetail.status === 10 ? (
                       <Button loading={unfreezeMutation.isPending} onClick={() => unfreezeMutation.mutate()}>解冻订单</Button>
-                    ) : (
+                    ) : freezeAllowedForStatus ? (
                       <Button danger loading={freezeMutation.isPending} disabled={!freezeReason.trim()} onClick={() => freezeMutation.mutate()}>冻结订单</Button>
+                    ) : (
+                      <Button danger disabled>冻结订单</Button>
                     )}
-                    <Text type="secondary">冻结会暂停订单推进，并写入订单事件留痕。</Text>
+                    <Text type="secondary">
+                      {orderDetail.status === 10
+                        ? '解冻会恢复到最近一次冻结前的订单状态。'
+                        : freezeAllowedForStatus
+                          ? '冻结会暂停订单推进，并写入订单事件留痕。'
+                          : '终态订单已结束或归档，不支持冻结。'}
+                    </Text>
                   </Space>
-                  {orderDetail.status !== 10 && (
+                  {orderDetail.status !== 10 && freezeAllowedForStatus && (
                     <Input.TextArea
                       rows={2}
                       placeholder="填写冻结原因"
