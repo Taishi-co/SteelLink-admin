@@ -268,7 +268,10 @@ func AuditEnterpriseServiceApplication(c *gin.Context) {
 	if req.Status == 2 {
 		approvedAt = sql.NullTime{Time: now, Valid: true}
 	}
-	upsertEnterpriseServicePermission(ctx, db, enterpriseID, enterpriseCode, service, permissionStatus, req.Reason, approvedAt, adminIDValue)
+	if err := upsertEnterpriseServicePermission(ctx, db, enterpriseID, enterpriseCode, service, permissionStatus, req.Reason, approvedAt, adminIDValue); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
 
 	logOpFromContext(c, db, "enterprise_service", "audit", 0, fmt.Sprintf(`{"id":"%s","status":%d}`, id, req.Status))
 	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": true})
@@ -312,7 +315,10 @@ func UpdateEnterpriseServicePermission(c *gin.Context) {
 	if req.Status == 2 {
 		approvedAt = sql.NullTime{Time: now, Valid: true}
 	}
-	upsertEnterpriseServicePermission(ctx, db, enterpriseID, enterpriseCode, service, req.Status, req.Reason, approvedAt, normalizeAdminID(adminID))
+	if err := upsertEnterpriseServicePermission(ctx, db, enterpriseID, enterpriseCode, service, req.Status, req.Reason, approvedAt, normalizeAdminID(adminID)); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "success", "data": true})
 }
 
@@ -369,19 +375,23 @@ func listApplicationDocuments(ctx context.Context, db *sql.DB, applicationID int
 	return result
 }
 
-func upsertEnterpriseServicePermission(ctx context.Context, db *sql.DB, enterpriseID int64, enterpriseCode, service string, status int, reason string, approvedAt sql.NullTime, adminID int64) {
+func upsertEnterpriseServicePermission(ctx context.Context, db *sql.DB, enterpriseID int64, enterpriseCode, service string, status int, reason string, approvedAt sql.NullTime, adminID int64) error {
 	table := capabilityPermissionTable(service)
 	if table == "" {
-		return
+		return fmt.Errorf("unsupported enterprise service: %s", service)
 	}
 	var id int64
 	err := db.QueryRowContext(ctx, fmt.Sprintf(`SELECT id FROM %s WHERE enterprise_id=? AND service=? AND deleted_at IS NULL`, table), enterpriseID, service).Scan(&id)
 	if err == nil {
-		db.ExecContext(ctx, fmt.Sprintf(`UPDATE %s SET status=?, audit_reason=?, approved_at=?, updated_by=?, updated_at=NOW() WHERE id=?`, table), status, reason, approvedAt, adminID, id)
-		return
+		_, err = db.ExecContext(ctx, fmt.Sprintf(`UPDATE %s SET status=?, audit_reason=?, approved_at=?, updated_by=?, updated_at=NOW() WHERE id=?`, table), status, reason, approvedAt, adminID, id)
+		return err
 	}
-	db.ExecContext(ctx, fmt.Sprintf(`INSERT INTO %s (enterprise_id, enterprise_code, service, status, audit_reason, approved_at, created_by, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, table),
+	if err != sql.ErrNoRows {
+		return err
+	}
+	_, err = db.ExecContext(ctx, fmt.Sprintf(`INSERT INTO %s (enterprise_id, enterprise_code, service, status, audit_reason, approved_at, created_by, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, table),
 		enterpriseID, enterpriseCode, service, status, reason, approvedAt, adminID, adminID)
+	return err
 }
 
 func capabilityKind(service string) string {

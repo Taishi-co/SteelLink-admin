@@ -93,8 +93,8 @@ func GetDashboardStats(c *gin.Context) {
 	}
 
 	pendingEnterprises, _ := queryCount(ctx, db, `SELECT COUNT(*) FROM enterprises WHERE deleted_at IS NULL AND status = 0`)
-	pendingProducts, _ := queryCount(ctx, db, `SELECT COUNT(*) FROM products WHERE deleted_at IS NULL AND status IN ('pending_review', '1')`)
-	pendingOrders, _ := queryCount(ctx, db, `SELECT COUNT(*) FROM orders WHERE deleted_at IS NULL AND status IN ('pending_contract', 'pending_payment', 'pending_payment_audit', 'pending_pickup')`)
+	pendingProducts, _ := queryCount(ctx, db, `SELECT COUNT(*) FROM products WHERE deleted_at IS NULL AND status = 1`)
+	pendingOrders, _ := queryCount(ctx, db, `SELECT COUNT(*) FROM orders WHERE deleted_at IS NULL AND status IN (2, 3, 5, 12, 13, 14, 15, 22, 23, 24, 25, 26, 27)`)
 	stats.PendingAudits = pendingEnterprises + pendingProducts + pendingOrders
 
 	c.JSON(http.StatusOK, gin.H{
@@ -2224,6 +2224,29 @@ func getOrderStatusForAction(ctx context.Context, db *sql.DB, orderID int64) (st
 	return orderNo, status, err
 }
 
+func restoreStatusFromFreezePayload(payload sql.NullString) (int, bool) {
+	if !payload.Valid || strings.TrimSpace(payload.String) == "" {
+		return 0, false
+	}
+	parsed := parseJSONMap(payload)
+	if parsed == nil {
+		return 0, false
+	}
+	var targetStatus int
+	switch value := parsed["from_status"].(type) {
+	case float64:
+		targetStatus = int(value)
+	case int:
+		targetStatus = value
+	default:
+		return 0, false
+	}
+	if targetStatus < 0 || targetStatus > 27 || targetStatus == 10 {
+		return 0, false
+	}
+	return targetStatus, true
+}
+
 // FreezeOrder freezes an order for platform operation intervention.
 func FreezeOrder(c *gin.Context) {
 	db := database.GetDB()
@@ -2293,22 +2316,27 @@ func UnfreezeOrder(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 		return
 	}
-	targetStatus := 11
+	if fromStatus != 10 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "order is not frozen"})
+		return
+	}
+	targetStatus := 0
+	foundFreezeEvent := false
 	if tableExists(ctx, db, "order_events") {
 		var payload sql.NullString
 		if err := db.QueryRowContext(ctx, `SELECT payload FROM order_events WHERE order_id = ? AND event_type = 'order_frozen' ORDER BY id DESC LIMIT 1`, orderID).Scan(&payload); err == nil {
-			if parsed := parseJSONMap(payload); parsed != nil {
-				switch value := parsed["from_status"].(type) {
-				case float64:
-					targetStatus = int(value)
-				case int:
-					targetStatus = value
-				}
+			var ok bool
+			targetStatus, ok = restoreStatusFromFreezePayload(payload)
+			if !ok {
+				c.JSON(http.StatusConflict, gin.H{"code": 409, "message": "missing valid freeze event, cannot safely unfreeze order"})
+				return
 			}
+			foundFreezeEvent = true
 		}
 	}
-	if targetStatus == 10 {
-		targetStatus = 11
+	if !foundFreezeEvent {
+		c.JSON(http.StatusConflict, gin.H{"code": 409, "message": "missing freeze event, cannot safely unfreeze order"})
+		return
 	}
 	if _, err := db.ExecContext(ctx, `UPDATE orders SET status = ?, updated_at = NOW() WHERE id = ?`, targetStatus, orderID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
@@ -2386,9 +2414,6 @@ func updateBreachRecord(c *gin.Context, action string) {
 	if _, err := db.ExecContext(ctx, query, args...); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 		return
-	}
-	if action == "resolve" && orderStatus == 11 {
-		_, _ = db.ExecContext(ctx, `UPDATE orders SET status = 8, updated_at = NOW() WHERE id = ?`, orderID)
 	}
 	if err := insertOrderEvent(ctx, db, orderID, orderNo, eventType, adminID, orderStatus, orderStatus, map[string]any{"breach_record_id": breachID, "result": strings.TrimSpace(req.Result)}); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
@@ -2489,80 +2514,89 @@ func buildOrderTimeline(order orderItem) []orderTimelineItem {
 	}
 
 	if order.Status == 9 {
-		timeline = append(timeline,
-			orderTimelineItem{Key: "payment_uploaded", Label: "支付凭证上传", Status: "skipped", Description: "订单已关闭，未完成支付。"},
-			orderTimelineItem{Key: "closed", Label: "订单关闭", Status: "completed", Time: order.ExpiresAt, Description: "订单已关闭，锁定库存已释放。"},
-		)
+		timeline = append(timeline, orderTimelineItem{Key: "cancelled", Label: "订单取消", Status: "completed", Time: order.ExpiresAt, Description: "订单已取消或交易终止。"})
+		return timeline
+	}
+	if order.Status == 10 {
+		timeline = append(timeline, orderTimelineItem{Key: "operation_intervention", Label: "平台冻结", Status: "current", Description: "订单已冻结，需平台运营处理后再恢复流程。"})
+		return timeline
+	}
+	if order.Status == 11 {
+		timeline = append(timeline, orderTimelineItem{Key: "operation_intervention", Label: "异常介入", Status: "current", Description: "订单处于异常状态，需平台运营协调处理。"})
 		return timeline
 	}
 
-	paymentStatus := "pending"
-	if order.Status == 4 {
-		paymentStatus = "current"
-	} else if order.Status >= 5 {
-		paymentStatus = "completed"
+	position := orderFlowPosition(order.Status)
+	steps := []orderTimelineItem{
+		{Key: "warehouse_select", Label: "选择收货仓库", Description: "买方确认收货仓库或目的地仓储。"},
+		{Key: "warehouse_check", Label: "仓库条件核验", Description: "仓储方核验库容、资质和承接条件。"},
+		{Key: "seller_confirm", Label: "卖方确认订单", Description: "卖方确认价格、数量和交付条款。"},
+		{Key: "buyer_confirm", Label: "买方最终确认", Description: "买方确认最终订单版本。"},
+		{Key: "contract", Label: "买卖合同签署", Description: "买卖双方签署包含物流、仓储和货权责任的电子合同。"},
+		{Key: "payment_finance", Label: "支付或融资", Description: "买方完成直采支付，或资金方完成托盘风控、合同和放款。"},
+		{Key: "logistics_bidding", Label: "物流竞价", Description: "物流方提交司机、车辆资质与报价，平台生成候选车队。"},
+		{Key: "logistics_confirm", Label: "确认物流", Description: "按运费承担方确认候选物流报价。"},
+		{Key: "logistics_contract", Label: "物流合同签署", Description: "买方和物流方签署运输合同后锁定运输任务。"},
+		{Key: "shipping", Label: "提货运输", Description: "物流方提货出库、上传单据并运输至目的地。"},
+		{Key: "delivered", Label: "到货验收", Description: "目的地仓库或买方现场验货并确认封条。"},
+		{Key: "receipt", Label: "确认收货", Time: order.ReceiptAt, Description: "买方或资金方确认收货并同步物流入库结果。"},
+		{Key: "reconcile", Label: "卖方对账", Description: "卖方完成收款和履约对账确认。"},
+		{Key: "archive", Label: "归档", Description: "订单履约完成，关键凭证和事件归档。"},
 	}
-	timeline = append(timeline, orderTimelineItem{
-		Key:         "payment_uploaded",
-		Label:       "支付凭证上传",
-		Status:      paymentStatus,
-		Description: "买家上传支付凭证后，卖家确认收款。",
-	})
-
-	confirmStatus := "pending"
-	if order.Status == 4 {
-		confirmStatus = "current"
-	} else if order.Status >= 5 {
-		confirmStatus = "completed"
+	for index := range steps {
+		steps[index].Status = timelineStepStatus(position, index+1)
+		timeline = append(timeline, steps[index])
 	}
-	timeline = append(timeline, orderTimelineItem{
-		Key:         "payment_confirmed",
-		Label:       "卖家确认收款",
-		Status:      confirmStatus,
-		Description: "卖家核对支付凭证并确认收款。",
-	})
-
-	pickupStatus := "pending"
-	if order.Status == 5 {
-		pickupStatus = "current"
-	} else if order.Status >= 6 {
-		pickupStatus = "completed"
-	}
-	timeline = append(timeline, orderTimelineItem{
-		Key:         "pickup_info",
-		Label:       "提货信息录入",
-		Status:      pickupStatus,
-		Description: "买家录入承运车辆、司机和送达地址。",
-	})
-
-	outboundStatus := "pending"
-	if order.Status == 5 {
-		outboundStatus = "current"
-	} else if order.Status >= 6 {
-		outboundStatus = "completed"
-	}
-	timeline = append(timeline, orderTimelineItem{
-		Key:         "outbound",
-		Label:       "卖家确认出库",
-		Status:      outboundStatus,
-		Description: "卖家核验提货码并确认货物出库。",
-	})
-
-	receiptStatus := "pending"
-	if order.Status == 6 || order.Status == 7 {
-		receiptStatus = "current"
-	} else if order.Status == 8 {
-		receiptStatus = "completed"
-	}
-	timeline = append(timeline, orderTimelineItem{
-		Key:         "receipt",
-		Label:       "买家确认收货",
-		Status:      receiptStatus,
-		Time:        order.ReceiptAt,
-		Description: "买家确认收货并上传签收凭证后，订单完成归档。",
-	})
-
 	return timeline
+}
+
+func orderFlowPosition(status int) int {
+	switch status {
+	case 0:
+		return 0
+	case 12, 26:
+		return 1
+	case 13, 24:
+		return 2
+	case 14, 1:
+		return 3
+	case 15:
+		return 4
+	case 2:
+		return 5
+	case 3, 22, 23:
+		return 6
+	case 16, 25:
+		return 7
+	case 17:
+		return 8
+	case 27:
+		return 9
+	case 18, 5, 6:
+		return 10
+	case 7:
+		return 11
+	case 19:
+		return 12
+	case 20:
+		return 13
+	case 4:
+		return 7
+	case 8, 21:
+		return 15
+	default:
+		return 0
+	}
+}
+
+func timelineStepStatus(position, step int) string {
+	if position > step {
+		return "completed"
+	}
+	if position == step {
+		return "current"
+	}
+	return "pending"
 }
 
 // GetProduct returns a single product

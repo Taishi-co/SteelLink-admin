@@ -690,9 +690,18 @@ func AutoMigrate(db *sql.DB) {
 			(0, '业务管理', '', 'SolutionOutlined', 1, '', 1, 3),
 			(6, '用户管理', '/user', 'UserOutlined', 1, 'business:user', 1, 1),
 			(6, '企业审核', '/enterprise', 'BankOutlined', 1, 'business:enterprise', 1, 2),
+			(6, '服务权限审核', '/enterprise/services', 'AuditOutlined', 1, 'business:enterprise-service', 1, 3),
+			(6, '仓储资源审核', '/service-offers/warehouse', 'ContainerOutlined', 1, 'service:warehouse:audit', 1, 4),
+			(6, '物流资源审核', '/service-offers/logistics', 'TruckOutlined', 1, 'service:logistics:audit', 1, 5),
+			(6, '金融服务审核', '/service-offers/finance', 'BankOutlined', 1, 'service:finance:audit', 1, 6),
 			(0, '商品中心', '', 'ShoppingOutlined', 1, '', 1, 4),
-			(9, '商品管理', '/product', 'ShopOutlined', 1, 'product:manage', 1, 1),
-			(9, '类目配置', '/product/category', 'AppstoreOutlined', 1, 'product:category', 1, 2)`)
+			(13, '商品管理', '/product', 'ShopOutlined', 1, 'product:manage', 1, 1),
+			(13, '订单管理', '/product/order', 'ShoppingOutlined', 1, 'order:manage', 1, 2),
+			(13, '类目配置', '/product/category', 'AppstoreOutlined', 1, 'product:category', 1, 3),
+			(0, 'AI采购管理', '', 'ThunderboltOutlined', 1, '', 1, 5),
+			(17, '采购配置', '/ai-procurement/config', 'SettingOutlined', 1, 'ai-procurement:config', 1, 1),
+			(0, '操作日志', '/log', 'FileTextOutlined', 1, 'log', 1, 6),
+			(0, '站内信', '/notification', 'MailOutlined', 1, 'notification', 1, 7)`)
 	}
 
 	ensureProductCategoriesTable(ctx, db)
@@ -710,6 +719,63 @@ func AutoMigrate(db *sql.DB) {
 		db.ExecContext(ctx, `INSERT INTO admin_role_menus (role_id, menu_id)
 			SELECT 1, id FROM admin_menus WHERE deleted_at IS NULL`)
 	}
+	ensureDefaultAdminMenus(ctx, db)
+}
+
+func ensureDefaultAdminMenus(ctx context.Context, db *sql.DB) {
+	if db == nil || !tableExists(ctx, db, "admin_menus") {
+		return
+	}
+	ensureAdminMenu(ctx, db, 0, "数据概览", "/dashboard", "DashboardOutlined", "", 1)
+	systemID := ensureAdminMenu(ctx, db, 0, "系统管理", "", "SettingOutlined", "", 2)
+	ensureAdminMenu(ctx, db, systemID, "管理员管理", "/system/admin", "TeamOutlined", "system:admin", 1)
+	ensureAdminMenu(ctx, db, systemID, "角色权限", "/system/role", "SafetyOutlined", "system:role", 2)
+	ensureAdminMenu(ctx, db, systemID, "菜单配置", "/system/menu", "MenuOutlined", "system:menu", 3)
+
+	businessID := ensureAdminMenu(ctx, db, 0, "业务管理", "", "SolutionOutlined", "", 3)
+	ensureAdminMenu(ctx, db, businessID, "用户管理", "/user", "UserOutlined", "business:user", 1)
+	ensureAdminMenu(ctx, db, businessID, "企业审核", "/enterprise", "BankOutlined", "business:enterprise", 2)
+	ensureAdminMenu(ctx, db, businessID, "服务权限审核", "/enterprise/services", "AuditOutlined", "business:enterprise-service", 3)
+	ensureAdminMenu(ctx, db, businessID, "仓储资源审核", "/service-offers/warehouse", "ContainerOutlined", "service:warehouse:audit", 4)
+	ensureAdminMenu(ctx, db, businessID, "物流资源审核", "/service-offers/logistics", "TruckOutlined", "service:logistics:audit", 5)
+	ensureAdminMenu(ctx, db, businessID, "金融服务审核", "/service-offers/finance", "BankOutlined", "service:finance:audit", 6)
+
+	productID := ensureAdminMenu(ctx, db, 0, "商品中心", "", "ShoppingOutlined", "", 4)
+	ensureAdminMenu(ctx, db, productID, "商品管理", "/product", "ShopOutlined", "product:manage", 1)
+	ensureAdminMenu(ctx, db, productID, "订单管理", "/product/order", "ShoppingOutlined", "order:manage", 2)
+	ensureAdminMenu(ctx, db, productID, "类目配置", "/product/category", "AppstoreOutlined", "product:category", 3)
+
+	aiID := ensureAdminMenu(ctx, db, 0, "AI采购管理", "", "ThunderboltOutlined", "", 5)
+	ensureAdminMenu(ctx, db, aiID, "采购配置", "/ai-procurement/config", "SettingOutlined", "ai-procurement:config", 1)
+	ensureAdminMenu(ctx, db, 0, "操作日志", "/log", "FileTextOutlined", "log", 6)
+	ensureAdminMenu(ctx, db, 0, "站内信", "/notification", "MailOutlined", "notification", 7)
+
+	if tableExists(ctx, db, "admin_role_menus") {
+		_, _ = db.ExecContext(ctx, `INSERT IGNORE INTO admin_role_menus (role_id, menu_id)
+			SELECT 1, id FROM admin_menus WHERE deleted_at IS NULL`)
+	}
+}
+
+func ensureAdminMenu(ctx context.Context, db *sql.DB, parentID int64, name, path, icon, permission string, sort int) int64 {
+	var id int64
+	var err error
+	if path != "" {
+		err = db.QueryRowContext(ctx, `SELECT id FROM admin_menus WHERE path = ? AND deleted_at IS NULL ORDER BY id ASC LIMIT 1`, path).Scan(&id)
+	} else {
+		err = db.QueryRowContext(ctx, `SELECT id FROM admin_menus WHERE parent_id = ? AND name = ? AND deleted_at IS NULL ORDER BY id ASC LIMIT 1`, parentID, name).Scan(&id)
+	}
+	if err == nil {
+		_, _ = db.ExecContext(ctx, `UPDATE admin_menus SET parent_id=?, name=?, path=?, icon=?, permission=?, type=1, status=1, sort=?, updated_at=NOW() WHERE id=?`,
+			parentID, name, path, icon, permission, sort, id)
+		return id
+	}
+	result, err := db.ExecContext(ctx, `INSERT INTO admin_menus (parent_id, name, path, icon, type, permission, status, sort) VALUES (?, ?, ?, ?, 1, ?, 1, ?)`,
+		parentID, name, path, icon, permission, sort)
+	if err != nil {
+		return 0
+	}
+	id, _ = result.LastInsertId()
+	return id
 }
 
 func ensureProductCategoriesTable(ctx context.Context, db *sql.DB) {
