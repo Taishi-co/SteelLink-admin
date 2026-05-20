@@ -158,6 +158,7 @@ type orderItem struct {
 	CreatedAt          time.Time           `json:"createdAt"`
 	Timeline           []orderTimelineItem `json:"timeline"`
 	Remark             map[string]any      `json:"remark,omitempty"`
+	TerminationReason  *terminationReason  `json:"terminationReason,omitempty"`
 	Events             []orderEventItem    `json:"events,omitempty"`
 	FinancingInfo      map[string]any      `json:"financingInfo,omitempty"`
 	LogisticsBidding   map[string]any      `json:"logisticsBidding,omitempty"`
@@ -174,6 +175,18 @@ type orderTimelineItem struct {
 	Status      string     `json:"status"`
 	Time        *time.Time `json:"time,omitempty"`
 	Description string     `json:"description,omitempty"`
+}
+
+type terminationReason struct {
+	Code              string     `json:"code"`
+	Label             string     `json:"label"`
+	Party             string     `json:"party,omitempty"`
+	PartyLabel        string     `json:"partyLabel,omitempty"`
+	Reason            string     `json:"reason,omitempty"`
+	Source            string     `json:"source,omitempty"`
+	EventType         string     `json:"eventType,omitempty"`
+	NeedsIntervention bool       `json:"needsIntervention"`
+	CreatedAt         *time.Time `json:"createdAt,omitempty"`
 }
 
 type orderEventItem struct {
