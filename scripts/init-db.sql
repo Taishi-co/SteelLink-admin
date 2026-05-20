@@ -315,7 +315,8 @@ INSERT INTO `admin_menus` (`parent_id`, `name`, `path`, `component`, `icon`, `ty
 (13, 'Order Management', '/product/order', 'order/index', 'ShoppingOutlined', 1, 'order:manage', 2, 0),
 (13, 'Category Management', '/product/category', 'product/category/index', 'AppstoreOutlined', 1, 'product:category', 3, 0),
 (0, 'AI Procurement', '/ai-procurement', '', 'ThunderboltOutlined', 1, 'ai-procurement', 5, 0),
-(17, 'Procurement Config', '/ai-procurement/config', 'ai-procurement/config/index', 'SettingOutlined', 1, 'ai-procurement:config', 1, 0),
+(17, 'Operations Monitor', '/ai-procurement/monitor', 'ai-procurement/monitor/index', 'BarChartOutlined', 1, 'ai-procurement:monitor', 1, 0),
+(17, 'Procurement Config', '/ai-procurement/config', 'ai-procurement/config/index', 'SettingOutlined', 1, 'ai-procurement:config', 2, 0),
 (0, 'Operation Logs', '/log', 'log/index', 'FileTextOutlined', 1, 'log', 6, 0),
 (0, 'Notifications', '/notification', 'notification/index', 'MailOutlined', 1, 'notification', 7, 0);
 
@@ -337,6 +338,7 @@ WHERE `path` IN (
     '/product',
     '/product/order',
     '/product/category',
+    '/ai-procurement/monitor',
     '/log',
     '/notification'
 );

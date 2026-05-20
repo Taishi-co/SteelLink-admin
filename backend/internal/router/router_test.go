@@ -90,3 +90,45 @@ func TestOrdinaryRoleGetsEmptyMenus(t *testing.T) {
 		t.Fatalf("ordinary menus body=%s, want empty data array", recorder.Body.String())
 	}
 }
+
+func TestAIProcurementMonitorAllowsOperatorRole(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	engine := gin.New()
+	RegisterRoutes(engine)
+
+	token, err := auth.GenerateAdminToken(101, "operator", "Operator", 2)
+	if err != nil {
+		t.Fatalf("generate token: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/ai-procurement/monitor", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	recorder := httptest.NewRecorder()
+
+	engine.ServeHTTP(recorder, req)
+
+	if recorder.Code == http.StatusForbidden {
+		t.Fatalf("operator should not be forbidden")
+	}
+}
+
+func TestAIProcurementMonitorRejectsAuditorRole(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	engine := gin.New()
+	RegisterRoutes(engine)
+
+	token, err := auth.GenerateAdminToken(102, "auditor", "Auditor", 3)
+	if err != nil {
+		t.Fatalf("generate token: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/ai-procurement/monitor", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	recorder := httptest.NewRecorder()
+
+	engine.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("status=%d, want %d", recorder.Code, http.StatusForbidden)
+	}
+}

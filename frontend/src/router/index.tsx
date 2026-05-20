@@ -20,6 +20,7 @@ const FinanceServiceAudit = lazy(() => import('../pages/service-offer/finance'))
 const OrderList = lazy(() => import('../pages/order'))
 const CategoryList = lazy(() => import('../pages/product/category'))
 const OperationLogList = lazy(() => import('../pages/log'))
+const AIProcurementMonitor = lazy(() => import('../pages/ai-procurement/monitor'))
 const AIProcurementConfig = lazy(() => import('../pages/ai-procurement/config'))
 const NotificationPage = lazy(() => import('../pages/notification'))
 
@@ -138,6 +139,10 @@ const router = createBrowserRouter([
       {
         path: 'service-offers/finance',
         element: <FinanceServiceAudit />,
+      },
+      {
+        path: 'ai-procurement/monitor',
+        element: <AIProcurementMonitor />,
       },
       {
         path: 'ai-procurement/config',

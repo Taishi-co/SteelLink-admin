@@ -90,6 +90,12 @@ func RegisterRoutes(r *gin.Engine) {
 				notificationAdmin.POST("/admin/notifications", handler.SendNotification)
 			}
 
+			aiProcurementMonitorAdmin := protected.Group("")
+			aiProcurementMonitorAdmin.Use(middleware.RequireRole(1, 2))
+			{
+				aiProcurementMonitorAdmin.GET("/ai-procurement/monitor", handler.GetAIProcurementMonitor)
+			}
+
 			superOnly := protected.Group("")
 			superOnly.Use(middleware.RequireRole(1))
 			{

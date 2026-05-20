@@ -804,7 +804,90 @@ export interface AIProcurementConfig {
   updatedAt?: string
 }
 
+export interface AIProcurementMonitorConfigSummary {
+  enabled: boolean
+  runtimeStatus: 'healthy' | 'warning' | 'disabled' | string
+  warnings: string[]
+  updatedAt?: string
+  parsingEnabled: boolean
+  modelProvider: string
+  model: string
+  modelApiKeyConfigured: boolean
+  visionApiKeyConfigured: boolean
+  vectorEnabled: boolean
+  vectorProvider: string
+  vectorTopK: number
+  vectorConnectionReady: boolean
+  financeEnabled: boolean
+  autoSubmitReview: boolean
+  maxRecommendations: number
+}
+
+export interface AIProcurementMonitorStats {
+  total: number
+  today: number
+  active: number
+  reviewSubmitted: number
+  failed: number
+  stale: number
+  needsIntervention: number
+}
+
+export interface AIProcurementMonitorCount {
+  key: string
+  label: string
+  count: number
+}
+
+export interface AIProcurementMonitorItem {
+  id: number
+  procurementNo: string
+  prompt?: string
+  productName?: string
+  category?: string
+  quantity: number
+  unit?: string
+  financingRequired: boolean
+  currentStage: string
+  currentStageLabel: string
+  status: string
+  statusLabel: string
+  parseConfidence?: number
+  matchCount: number
+  orderCount: number
+  financePlanCount: number
+  auditItemCount: number
+  historySaved: boolean
+  enterpriseId: number
+  createdBy: number
+  createdAt: string
+  updatedAt: string
+  reviewSubmittedAt?: string
+  needsIntervention: boolean
+  interventionReason?: string
+}
+
+export interface AIProcurementMonitorResponse {
+  tableReady: boolean
+  generatedAt: string
+  config: AIProcurementMonitorConfigSummary
+  stats: AIProcurementMonitorStats
+  stageCounts: AIProcurementMonitorCount[]
+  statusCounts: AIProcurementMonitorCount[]
+  records: PageResult<AIProcurementMonitorItem>
+}
+
+export interface AIProcurementMonitorParams {
+  page: number
+  pageSize: number
+  keyword?: string
+  status?: string
+  stage?: string
+  intervention?: number
+}
+
 export const aiProcurementApi = {
   getConfig: () => get<AIProcurementConfig>('/ai-procurement/config'),
   updateConfig: (data: AIProcurementConfig) => put<AIProcurementConfig>('/ai-procurement/config', data),
+  monitor: (params: AIProcurementMonitorParams) => get<AIProcurementMonitorResponse>('/ai-procurement/monitor', { params }),
 }

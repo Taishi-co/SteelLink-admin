@@ -117,6 +117,7 @@ const fallbackMenuItems: MenuProps['items'] = [
     icon: <ThunderboltOutlined />,
     label: 'AI采购管理',
     children: [
+      { key: '/ai-procurement/monitor', icon: <BarChartOutlined />, label: '运营监控' },
       { key: '/ai-procurement/config', icon: <SettingOutlined />, label: '采购配置' },
     ],
   },
@@ -176,6 +177,7 @@ const pageMeta: Record<string, { title: string; description: string }> = {
   '/product': { title: '商品管理', description: '商品信息与审核管理' },
   '/product/order': { title: '订单管理', description: '交易订单与履约管理' },
   '/product/category': { title: '类目配置', description: '商品类目结构管理' },
+  '/ai-procurement/monitor': { title: 'AI采购运营监控', description: '查看AI采购流程状态、异常和运行配置' },
   '/ai-procurement/config': { title: 'AI采购配置', description: '配置AI采购流程、模型、商品匹配、融资与审核策略' },
   '/notification': { title: '站内信', description: '向用户发送平台通知' },
   '/log': { title: '操作日志', description: '管理员操作审计日志' },
