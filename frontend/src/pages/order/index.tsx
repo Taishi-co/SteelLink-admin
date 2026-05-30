@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Alert, Card, Table, Tag, Input, Select, Space, Button, Descriptions, Drawer, Typography, Timeline, Divider, Form, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -213,10 +214,11 @@ const eventLabel: Record<string, string> = {
 
 export default function OrderList() {
   const queryClient = useQueryClient()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [params, setParams] = useState<PageParams>({ page: 1, pageSize: 10 })
-  const [keyword, setKeyword] = useState('')
-  const [statusFilter, setStatusFilter] = useState('')
-  const [interventionOnly, setInterventionOnly] = useState(false)
+  const [keyword, setKeyword] = useState(searchParams.get('keyword') || '')
+  const [statusFilter, setStatusFilter] = useState(searchParams.get('status') || '')
+  const [interventionOnly, setInterventionOnly] = useState(searchParams.get('intervention') === '1')
   const [selectedOrder, setSelectedOrder] = useState<OrderItem | null>(null)
   const [freezeReason, setFreezeReason] = useState('')
   const [breachDrafts, setBreachDrafts] = useState<Record<number, string>>({})
@@ -225,6 +227,14 @@ export default function OrderList() {
   const operateAllowed = canOperate(roleId)
 
   const queryParams = { ...params, keyword: keyword || undefined, status: statusFilter ? statusFilter as unknown as number : undefined, intervention: interventionOnly ? 1 : undefined }
+
+  const syncFiltersToURL = (nextKeyword = keyword, nextStatus = statusFilter, nextIntervention = interventionOnly) => {
+    const next = new URLSearchParams()
+    if (nextKeyword.trim()) next.set('keyword', nextKeyword.trim())
+    if (nextStatus) next.set('status', nextStatus)
+    if (nextIntervention) next.set('intervention', '1')
+    setSearchParams(next, { replace: true })
+  }
 
   const { data, isLoading } = useQuery({
     queryKey: ['orders', queryParams],
@@ -349,24 +359,27 @@ export default function OrderList() {
             style={{ width: 280 }}
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
-            onPressEnter={() => setParams({ ...params, page: 1 })}
+            onPressEnter={() => {
+              syncFiltersToURL()
+              setParams({ ...params, page: 1 })
+            }}
           />
           <Select
             value={statusFilter}
-            onChange={(v) => { setStatusFilter(v); setParams({ ...params, page: 1 }) }}
+            onChange={(v) => { setStatusFilter(v); syncFiltersToURL(keyword, v, interventionOnly); setParams({ ...params, page: 1 }) }}
             style={{ width: 160 }}
             options={statusOptions}
           />
           <Select
             value={interventionOnly ? '1' : ''}
-            onChange={(v) => { setInterventionOnly(v === '1'); setParams({ ...params, page: 1 }) }}
+            onChange={(v) => { const nextIntervention = v === '1'; setInterventionOnly(nextIntervention); syncFiltersToURL(keyword, statusFilter, nextIntervention); setParams({ ...params, page: 1 }) }}
             style={{ width: 160 }}
             options={[
               { label: '全部订单', value: '' },
               { label: '待运营介入', value: '1' },
             ]}
           />
-          <Button type="primary" onClick={() => setParams({ ...params, page: 1 })}>搜索</Button>
+          <Button type="primary" onClick={() => { syncFiltersToURL(); setParams({ ...params, page: 1 }) }}>搜索</Button>
         </Space>
 
         <Table

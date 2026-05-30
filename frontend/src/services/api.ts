@@ -419,6 +419,8 @@ export interface GroupParticipantItem {
   status: string
   childOrderId: number
   childOrderNo: string
+  childOrderStatus: number
+  childOrderUpdatedAt?: string
   remark?: string
   createdAt: string
   updatedAt: string
@@ -459,6 +461,8 @@ export interface GroupProcurementItem {
   closedAt?: string
   masterOrderId: number
   masterOrderNo: string
+  masterOrderStatus: number
+  masterOrderUpdatedAt?: string
   participants?: GroupParticipantItem[]
   createdAt: string
   updatedAt: string
@@ -496,11 +500,12 @@ export const groupProcurementApi = {
   list: (params: GroupProcurementPageParams) =>
     get<PageResult<GroupProcurementItem>>('/group-procurements', { params: { ...params, page_size: params.pageSize } }),
   get: (id: number) => get<GroupProcurementItem>(`/group-procurements/${id}`),
-  create: (data: { productId: number; title?: string; targetQuantity?: number; durationHours?: number; adminRemark?: string }) =>
+  create: (data: { requestId?: number; productId: number; title?: string; targetQuantity?: number; durationHours?: number; adminRemark?: string }) =>
     post<GroupProcurementItem>('/group-procurements', data),
   end: (id: number, data?: { remark?: string }) => post<GroupProcurementItem>(`/group-procurements/${id}/end`, data || {}),
   listRequests: (params: GroupProcurementRequestPageParams) =>
     get<PageResult<GroupProcurementRequestItem>>('/group-procurement-requests', { params: { ...params, page_size: params.pageSize } }),
+  rejectRequest: (id: number, data?: { remark?: string }) => post<GroupProcurementRequestItem>(`/group-procurement-requests/${id}/reject`, data || {}),
 }
 
 export interface ServiceOfferItem {
