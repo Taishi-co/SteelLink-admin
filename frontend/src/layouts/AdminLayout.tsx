@@ -97,6 +97,7 @@ const fallbackMenuItems: MenuProps['items'] = [
       { key: '/user', icon: <UserOutlined />, label: '用户管理' },
       { key: '/enterprise', icon: <BankOutlined />, label: '企业审核' },
       { key: '/enterprise/services', icon: <AuditOutlined />, label: '服务权限审核' },
+      { key: '/supply-demands', icon: <ReconciliationOutlined />, label: '供求信息审核' },
       { key: '/service-offers/warehouse', icon: <ContainerOutlined />, label: '仓储资源审核' },
       { key: '/service-offers/logistics', icon: <TruckOutlined />, label: '物流资源审核' },
       { key: '/service-offers/finance', icon: <BankOutlined />, label: '金融服务审核' },
@@ -171,6 +172,7 @@ const pageMeta: Record<string, { title: string; description: string }> = {
   '/user': { title: '用户管理', description: '平台注册用户管理' },
   '/enterprise': { title: '企业审核', description: '入驻企业资质审核' },
   '/enterprise/services': { title: '服务权限审核', description: '审核企业销售、采购、物流、仓储和金融服务权限' },
+  '/supply-demands': { title: '供求信息审核', description: '审核用户发布的供应、求购、仓储和物流线索' },
   '/service-offers/warehouse': { title: '仓储资源审核', description: '审核仓储方上架的仓储服务资源' },
   '/service-offers/logistics': { title: '物流资源审核', description: '审核物流方上架的物流服务资源' },
   '/service-offers/finance': { title: '金融服务审核', description: '审核资金方上架的金融服务产品' },
@@ -243,7 +245,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const getOpenKeys = () => {
     const path = currentPath
     if (path.startsWith('/system')) return ['/system']
-    if (path === '/user' || path.startsWith('/enterprise') || path.startsWith('/service-offers')) return ['/business']
+    if (path === '/user' || path.startsWith('/enterprise') || path.startsWith('/service-offers') || path.startsWith('/supply-demands')) return ['/business']
     if (path.startsWith('/product')) return ['/product-center']
     if (path.startsWith('/ai-procurement')) return ['/ai-procurement']
     return []

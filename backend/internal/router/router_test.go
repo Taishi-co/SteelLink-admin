@@ -28,6 +28,7 @@ func TestBusinessReadRoutesRejectOrdinaryRole(t *testing.T) {
 		{http.MethodGet, "/api/v1/users"},
 		{http.MethodGet, "/api/v1/enterprises"},
 		{http.MethodGet, "/api/v1/products"},
+		{http.MethodGet, "/api/v1/supply-demands"},
 		{http.MethodGet, "/api/v1/orders"},
 		{http.MethodGet, "/api/v1/operation-logs"},
 		{http.MethodPost, "/api/v1/files/upload"},

@@ -94,8 +94,12 @@ func GetDashboardStats(c *gin.Context) {
 
 	pendingEnterprises, _ := queryCount(ctx, db, `SELECT COUNT(*) FROM enterprises WHERE deleted_at IS NULL AND status = 0`)
 	pendingProducts, _ := queryCount(ctx, db, `SELECT COUNT(*) FROM products WHERE deleted_at IS NULL AND status = 1`)
+	pendingSupplyDemands := 0
+	if tableExists(ctx, db, "supply_demand_posts") {
+		pendingSupplyDemands, _ = queryCount(ctx, db, `SELECT COUNT(*) FROM supply_demand_posts WHERE deleted_at IS NULL AND status = 4`)
+	}
 	pendingOrders, _ := queryCount(ctx, db, `SELECT COUNT(*) FROM orders WHERE deleted_at IS NULL AND status IN (2, 3, 5, 12, 13, 14, 15, 22, 23, 24, 25, 26, 27)`)
-	stats.PendingAudits = pendingEnterprises + pendingProducts + pendingOrders
+	stats.PendingAudits = pendingEnterprises + pendingProducts + pendingSupplyDemands + pendingOrders
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
