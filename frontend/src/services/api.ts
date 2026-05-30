@@ -401,6 +401,108 @@ export const productApi = {
     put(`/products/${id}/audit`, { status: data.status, auditRemark: data.auditRemark, audit_remark: data.auditRemark }),
 }
 
+export interface GroupParticipantItem {
+  id: number
+  activityId: number
+  buyerEnterpriseId: number
+  buyerUserId: number
+  buyerName: string
+  quantity: number
+  unit: string
+  unitPrice: number
+  totalAmount: number
+  contactName: string
+  contactPhone: string
+  deliveryAddress: string
+  agreementSigned: boolean
+  agreementSignedAt?: string
+  status: string
+  childOrderId: number
+  childOrderNo: string
+  remark?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface GroupProcurementItem {
+  id: number
+  procurementNo: string
+  title: string
+  leaderName: string
+  status: string
+  productId: number
+  productNo: string
+  productName: string
+  sellerEnterpriseId: number
+  sellerName: string
+  groupPrice: number
+  minGroupQuantity: number
+  maxGroupQuantity: number
+  category: string
+  target: string
+  targetQuantity: number
+  unit: string
+  budgetMin: number
+  budgetMax: number
+  budgetDisplay: string
+  stage: string
+  progress: number
+  participatingCount: number
+  demandQuantity: number
+  deliveryDays: number
+  adminRemark?: string
+  sellerRemark?: string
+  source?: string
+  startedAt?: string
+  endedAt?: string
+  sellerRespondedAt?: string
+  closedAt?: string
+  masterOrderId: number
+  masterOrderNo: string
+  participants?: GroupParticipantItem[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface GroupProcurementRequestItem {
+  id: number
+  requestNo: string
+  source: string
+  category: string
+  productName: string
+  quantity: number
+  unit: string
+  deliveryAddress: string
+  buyerEnterpriseId: number
+  buyerUserId: number
+  buyerName: string
+  status: string
+  activityId: number
+  remark?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export type GroupProcurementPageParams = Omit<PageParams, 'status'> & {
+  status?: string
+  category?: string
+}
+
+export type GroupProcurementRequestPageParams = Omit<PageParams, 'status'> & {
+  status?: string
+}
+
+export const groupProcurementApi = {
+  list: (params: GroupProcurementPageParams) =>
+    get<PageResult<GroupProcurementItem>>('/group-procurements', { params: { ...params, page_size: params.pageSize } }),
+  get: (id: number) => get<GroupProcurementItem>(`/group-procurements/${id}`),
+  create: (data: { productId: number; title?: string; targetQuantity?: number; durationHours?: number; adminRemark?: string }) =>
+    post<GroupProcurementItem>('/group-procurements', data),
+  end: (id: number, data?: { remark?: string }) => post<GroupProcurementItem>(`/group-procurements/${id}/end`, data || {}),
+  listRequests: (params: GroupProcurementRequestPageParams) =>
+    get<PageResult<GroupProcurementRequestItem>>('/group-procurement-requests', { params: { ...params, page_size: params.pageSize } }),
+}
+
 export interface ServiceOfferItem {
   id: number
   type: 'warehouse' | 'logistics' | 'finance'
