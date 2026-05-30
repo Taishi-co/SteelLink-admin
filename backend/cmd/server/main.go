@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"os"
+	"time"
 
 	"github.com/Taishi-co/SteelLink-admin/backend/internal/database"
 	"github.com/Taishi-co/SteelLink-admin/backend/internal/handler"
@@ -40,6 +41,7 @@ func main() {
 
 	handler.AutoMigrate(database.GetDB())
 	log.Println("Auto-migration completed")
+	handler.StartGroupProcurementAutoFinalizer(time.Minute)
 
 	// Create Gin engine
 	r := gin.Default()

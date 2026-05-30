@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"math/big"
 	"net/http"
 	"strconv"
@@ -139,6 +140,39 @@ type groupProductSnapshot struct {
 	DeliveryDays       int
 }
 
+func StartGroupProcurementAutoFinalizer(interval time.Duration) {
+	if interval <= 0 {
+		interval = time.Minute
+	}
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		run := func() {
+			db := database.GetDB()
+			if db == nil {
+				return
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			if err := ensureGroupProcurementSchema(ctx, db); err != nil {
+				log.Printf("group procurement auto finalizer schema error: %v", err)
+				return
+			}
+			if err := reconcileExpiredGroupProcurements(ctx, db); err != nil {
+				log.Printf("group procurement auto finalizer reconcile error: %v", err)
+				return
+			}
+			if _, err := finalizeDueGroupProcurements(ctx, db, 0); err != nil {
+				log.Printf("group procurement auto finalizer error: %v", err)
+			}
+		}
+		run()
+		for range ticker.C {
+			run()
+		}
+	}()
+}
+
 func ListGroupProcurements(c *gin.Context) {
 	db := database.GetDB()
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
@@ -148,6 +182,10 @@ func ListGroupProcurements(c *gin.Context) {
 		return
 	}
 	if err := reconcileExpiredGroupProcurements(ctx, db); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+	if _, err := finalizeDueGroupProcurements(ctx, db, currentAdminID(c)); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 		return
 	}
@@ -595,6 +633,96 @@ func reconcileExpiredGroupProcurements(ctx context.Context, db *sql.DB) error {
 	return err
 }
 
+func finalizeDueGroupProcurements(ctx context.Context, db *sql.DB, operatorID int64) (int, error) {
+	rows, err := db.QueryContext(ctx, `
+		SELECT id
+		FROM procurement_activities
+		WHERE deleted_at IS NULL
+		  AND status = 'ended'
+		  AND COALESCE(master_order_id, 0) = 0
+		  AND ended_at IS NOT NULL
+		  AND ended_at <= NOW()
+		ORDER BY ended_at ASC, id ASC
+		LIMIT 20`)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+
+	ids := make([]int64, 0)
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return 0, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+
+	finalized := 0
+	for _, id := range ids {
+		item, err := getGroupProcurementByID(ctx, db, id)
+		if err != nil {
+			return finalized, err
+		}
+		if item.MasterOrderID > 0 || item.Status != "ended" {
+			continue
+		}
+		participants, err := listGroupParticipants(ctx, db, id)
+		if err != nil {
+			return finalized, err
+		}
+		totalQuantity := 0.0
+		for _, participant := range participants {
+			if participant.Status == "joined" {
+				totalQuantity += participant.Quantity
+			}
+		}
+		if totalQuantity <= 0 || (item.MinGroupQuantity > 0 && totalQuantity < item.MinGroupQuantity) {
+			continue
+		}
+		product, err := getGroupProductSnapshot(ctx, db, item.ProductID)
+		if err != nil {
+			if logErr := insertGroupProcurementFailureLog(ctx, db, id, "系统到期自动成单失败：商品信息不可用"); logErr != nil {
+				return finalized, logErr
+			}
+			continue
+		}
+		_, _, err = createGroupOrders(ctx, db, item, product, participants, totalQuantity, operatorID, "系统到期自动成单")
+		if err != nil {
+			if logErr := insertGroupProcurementFailureLog(ctx, db, id, "系统到期自动成单失败："+truncateLogContent(err.Error(), 180)); logErr != nil {
+				return finalized, logErr
+			}
+			continue
+		}
+		finalized++
+	}
+	return finalized, nil
+}
+
+func insertGroupProcurementFailureLog(ctx context.Context, db *sql.DB, activityID int64, content string) error {
+	var count int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM procurement_logs WHERE activity_id = ? AND content = ?`, activityID, content).Scan(&count); err != nil {
+		return err
+	}
+	if count > 0 {
+		return nil
+	}
+	_, err := db.ExecContext(ctx, `INSERT INTO procurement_logs (activity_id, content, color, created_at) VALUES (?, ?, 'red', ?)`, activityID, content, time.Now())
+	return err
+}
+
+func truncateLogContent(value string, max int) string {
+	value = strings.TrimSpace(value)
+	if max <= 0 || len([]rune(value)) <= max {
+		return value
+	}
+	runes := []rune(value)
+	return string(runes[:max])
+}
+
 func getGroupProcurementByID(ctx context.Context, db *sql.DB, id int64) (groupProcurementItem, error) {
 	row := db.QueryRowContext(ctx, groupProcurementSelectSQL("WHERE deleted_at IS NULL AND id = ? LIMIT 1"), id)
 	item, err := scanGroupProcurement(row)
@@ -677,6 +805,17 @@ func createGroupOrders(ctx context.Context, db *sql.DB, activity groupProcuremen
 		return 0, "", err
 	}
 	defer tx.Rollback()
+	var existingMasterID int64
+	var currentStatus string
+	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(master_order_id,0), COALESCE(status,'') FROM procurement_activities WHERE id = ? AND deleted_at IS NULL FOR UPDATE`, activity.ID).Scan(&existingMasterID, &currentStatus); err != nil {
+		return 0, "", err
+	}
+	if existingMasterID > 0 {
+		return 0, "", fmt.Errorf("该集采已生成订单")
+	}
+	if currentStatus != "active" && currentStatus != "ended" {
+		return 0, "", fmt.Errorf("当前集采状态不可生成订单")
+	}
 	result, err := tx.ExecContext(ctx, `UPDATE products SET available_qty = available_qty - ?, locked_qty = locked_qty + ?, updated_at = NOW() WHERE id = ? AND deleted_at IS NULL AND available_qty >= ?`, totalQuantity, totalQuantity, product.ID, totalQuantity)
 	if err != nil {
 		return 0, "", err
