@@ -84,6 +84,7 @@ func RegisterRoutes(r *gin.Engine) {
 				operatorAdmin.DELETE("/products/:id", handler.DeleteProduct)
 				operatorAdmin.POST("/group-procurements", handler.CreateGroupProcurement)
 				operatorAdmin.POST("/group-procurements/:id/end", handler.EndGroupProcurement)
+				operatorAdmin.POST("/group-procurement-requests/:id/reject", handler.RejectGroupProcurementRequest)
 				operatorAdmin.POST("/orders/:id/freeze", handler.FreezeOrder)
 				operatorAdmin.POST("/orders/:id/unfreeze", handler.UnfreezeOrder)
 				operatorAdmin.POST("/orders/breach-records/:id/mediate", handler.MediateBreach)
