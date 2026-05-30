@@ -754,7 +754,8 @@ func AutoMigrate(db *sql.DB) {
 			(0, 'AI采购管理', '', 'ThunderboltOutlined', 1, '', 1, 5),
 			(17, '采购配置', '/ai-procurement/config', 'SettingOutlined', 1, 'ai-procurement:config', 1, 1),
 			(0, '操作日志', '/log', 'FileTextOutlined', 1, 'log', 1, 6),
-			(0, '站内信', '/notification', 'MailOutlined', 1, 'notification', 1, 7)`)
+			(0, '站内信', '/notification', 'MailOutlined', 1, 'notification', 1, 7),
+			(6, '供求信息审核', '/supply-demands', 'ReconciliationOutlined', 1, 'supply-demand:audit', 1, 7)`)
 	}
 
 	ensureProductCategoriesTable(ctx, db)
@@ -790,9 +791,10 @@ func ensureDefaultAdminMenus(ctx context.Context, db *sql.DB) {
 	ensureAdminMenu(ctx, db, businessID, "用户管理", "/user", "UserOutlined", "business:user", 1)
 	ensureAdminMenu(ctx, db, businessID, "企业审核", "/enterprise", "BankOutlined", "business:enterprise", 2)
 	ensureAdminMenu(ctx, db, businessID, "服务权限审核", "/enterprise/services", "AuditOutlined", "business:enterprise-service", 3)
-	ensureAdminMenu(ctx, db, businessID, "仓储资源审核", "/service-offers/warehouse", "ContainerOutlined", "service:warehouse:audit", 4)
-	ensureAdminMenu(ctx, db, businessID, "物流资源审核", "/service-offers/logistics", "TruckOutlined", "service:logistics:audit", 5)
-	ensureAdminMenu(ctx, db, businessID, "金融服务审核", "/service-offers/finance", "BankOutlined", "service:finance:audit", 6)
+	ensureAdminMenu(ctx, db, businessID, "供求信息审核", "/supply-demands", "ReconciliationOutlined", "supply-demand:audit", 4)
+	ensureAdminMenu(ctx, db, businessID, "仓储资源审核", "/service-offers/warehouse", "ContainerOutlined", "service:warehouse:audit", 5)
+	ensureAdminMenu(ctx, db, businessID, "物流资源审核", "/service-offers/logistics", "TruckOutlined", "service:logistics:audit", 6)
+	ensureAdminMenu(ctx, db, businessID, "金融服务审核", "/service-offers/finance", "BankOutlined", "service:finance:audit", 7)
 
 	productID := ensureAdminMenu(ctx, db, 0, "商品中心", "", "ShoppingOutlined", "", 4)
 	ensureAdminMenu(ctx, db, productID, "商品管理", "/product", "ShopOutlined", "product:manage", 1)
@@ -813,6 +815,7 @@ func ensureDefaultAdminMenus(ctx context.Context, db *sql.DB) {
 			"/user",
 			"/enterprise",
 			"/enterprise/services",
+			"/supply-demands",
 			"/service-offers/warehouse",
 			"/service-offers/logistics",
 			"/service-offers/finance",
@@ -828,6 +831,7 @@ func ensureDefaultAdminMenus(ctx context.Context, db *sql.DB) {
 			"/user",
 			"/enterprise",
 			"/enterprise/services",
+			"/supply-demands",
 			"/service-offers/warehouse",
 			"/service-offers/logistics",
 			"/service-offers/finance",

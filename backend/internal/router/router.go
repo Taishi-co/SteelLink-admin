@@ -49,6 +49,7 @@ func RegisterRoutes(r *gin.Engine) {
 
 				businessReadAdmin.GET("/products", handler.ListProducts)
 				businessReadAdmin.GET("/products/:id", handler.GetProduct)
+				businessReadAdmin.GET("/supply-demands", handler.ListSupplyDemandPosts)
 				businessReadAdmin.GET("/warehouse-services", handler.ListWarehouseServiceOffers)
 				businessReadAdmin.GET("/logistics-services", handler.ListLogisticsServiceOffers)
 				businessReadAdmin.GET("/finance-services", handler.ListFinanceServiceOffers)
@@ -65,6 +66,7 @@ func RegisterRoutes(r *gin.Engine) {
 				auditAdmin.PUT("/enterprises/:id/audit", handler.AuditEnterprise)
 				auditAdmin.PUT("/enterprise-service-applications/:id/audit", handler.AuditEnterpriseServiceApplication)
 				auditAdmin.PUT("/products/:id/audit", handler.AuditProduct)
+				auditAdmin.PUT("/supply-demands/:id/audit", handler.AuditSupplyDemandPost)
 				auditAdmin.PUT("/warehouse-services/:id/audit", handler.AuditWarehouseServiceOffer)
 				auditAdmin.PUT("/logistics-services/:id/audit", handler.AuditLogisticsServiceOffer)
 				auditAdmin.PUT("/finance-services/:id/audit", handler.AuditFinanceServiceOffer)

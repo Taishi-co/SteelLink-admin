@@ -36,6 +36,23 @@ func TestNormalizeProductAuditDecision(t *testing.T) {
 	}
 }
 
+func TestNormalizeSupplyDemandAuditStatus(t *testing.T) {
+	status, ok := normalizeSupplyDemandAuditStatus(0, "approve")
+	if !ok || status != supplyDemandStatusPublished {
+		t.Fatalf("approve action got (%d, %v)", status, ok)
+	}
+
+	status, ok = normalizeSupplyDemandAuditStatus(0, "reject")
+	if !ok || status != supplyDemandStatusRejected {
+		t.Fatalf("reject action got (%d, %v)", status, ok)
+	}
+
+	status, ok = normalizeSupplyDemandAuditStatus(supplyDemandStatusPendingReview, "")
+	if ok || status != 0 {
+		t.Fatalf("pending review status should not be a valid audit decision: (%d, %v)", status, ok)
+	}
+}
+
 func TestRejectReasonProvided(t *testing.T) {
 	if rejectReasonProvided(2, 2, "  ") {
 		t.Fatalf("blank reject reason should be invalid")

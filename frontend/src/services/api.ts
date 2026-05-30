@@ -455,6 +455,58 @@ export const serviceOfferApi = {
   auditFinance: (id: number, data: ServiceOfferAuditPayload) => put(`/finance-services/${id}/audit`, serviceOfferAuditBody(data)),
 }
 
+export type SupplyDemandType = 'supply' | 'demand' | 'warehouse' | 'logistics'
+
+export interface SupplyDemandItem {
+  id: number
+  postNo: string
+  type: SupplyDemandType
+  title: string
+  category: string
+  material?: string
+  spec?: string
+  quantity: number
+  unit: string
+  targetPrice: number
+  budget: number
+  currency: string
+  province?: string
+  city?: string
+  district?: string
+  deliveryAddress?: string
+  description?: string
+  tags?: string
+  contactName?: string
+  contactPhone?: string
+  financingRequired: boolean
+  matchCount: number
+  matchAmount: number
+  status: number
+  auditRemark?: string
+  auditorId?: number
+  auditedAt?: string
+  enterpriseId?: number
+  createdBy: number
+  createdAt: string
+  updatedAt: string
+}
+
+type SupplyDemandAuditPayload = { status: number; auditAction?: 'approve' | 'reject'; auditRemark?: string }
+
+const supplyDemandAuditBody = (data: SupplyDemandAuditPayload) => ({
+  status: data.status,
+  audit_action: data.auditAction,
+  auditAction: data.auditAction,
+  audit_remark: data.auditRemark,
+  auditRemark: data.auditRemark,
+})
+
+export const supplyDemandApi = {
+  list: (params: PageParams & { type?: SupplyDemandType }) =>
+    get<PageResult<SupplyDemandItem>>('/supply-demands', { params: { ...params, page_size: params.pageSize } }),
+  audit: (id: number, data: SupplyDemandAuditPayload) => put(`/supply-demands/${id}/audit`, supplyDemandAuditBody(data)),
+}
+
 // Order API
 export interface OrderItem {
   [key: string]: unknown
