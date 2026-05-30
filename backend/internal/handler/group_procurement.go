@@ -147,6 +147,10 @@ func ListGroupProcurements(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 		return
 	}
+	if err := reconcileExpiredGroupProcurements(ctx, db); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
 	limit, offset := parsePageParams(c.Query("page"), c.Query("pageSize"))
 	whereParts := []string{"deleted_at IS NULL"}
 	args := make([]any, 0)
@@ -192,6 +196,10 @@ func GetGroupProcurement(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
 	if err := ensureGroupProcurementSchema(ctx, db); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+	if err := reconcileExpiredGroupProcurements(ctx, db); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 		return
 	}
@@ -355,6 +363,10 @@ func EndGroupProcurement(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 	defer cancel()
 	if err := ensureGroupProcurementSchema(ctx, db); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+	if err := reconcileExpiredGroupProcurements(ctx, db); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 		return
 	}
@@ -566,6 +578,21 @@ func scanGroupProcurement(scanner sqlScanner) (groupProcurementItem, error) {
 		item.MasterOrderUpdated = &masterOrderUpdated.Time
 	}
 	return item, err
+}
+
+func reconcileExpiredGroupProcurements(ctx context.Context, db *sql.DB) error {
+	_, err := db.ExecContext(ctx, `
+		UPDATE procurement_activities
+		SET status = 'ended',
+		    stage = '已截止',
+		    progress = 100,
+		    closed_at = COALESCE(closed_at, NOW()),
+		    updated_at = NOW()
+		WHERE deleted_at IS NULL
+		  AND status = 'active'
+		  AND ended_at IS NOT NULL
+		  AND ended_at <= NOW()`)
+	return err
 }
 
 func getGroupProcurementByID(ctx context.Context, db *sql.DB, id int64) (groupProcurementItem, error) {
