@@ -110,6 +110,7 @@ const fallbackMenuItems: MenuProps['items'] = [
     children: [
       { key: '/product', icon: <AppstoreOutlined />, label: '商品管理' },
       { key: '/product/order', icon: <ShoppingOutlined />, label: '订单管理' },
+      { key: '/group-procurement', icon: <TeamOutlined />, label: '集采管理' },
       { key: '/product/category', icon: <AppstoreOutlined />, label: '类目配置' },
     ],
   },
@@ -164,6 +165,38 @@ function collectMenuPaths(items: ApiMenuItem[]): string[] {
   return paths
 }
 
+function withLocalMenus(items: ApiMenuItem[]): ApiMenuItem[] {
+  const cloned: ApiMenuItem[] = items.map((item) => {
+    const next: ApiMenuItem = { ...item }
+    if (item.children) {
+      next.children = withLocalMenus(item.children)
+    }
+    return next
+  })
+  if (cloned.length === 0) return cloned
+  const hasGroupProcurement = collectMenuPaths(cloned).includes('/group-procurement')
+  if (hasGroupProcurement) return cloned
+
+  const productCenter = cloned.find((item) => item.path === '/product-center' || item.name === '商品中心')
+  const menu: ApiMenuItem = {
+    id: -9001,
+    parentId: productCenter?.id || 0,
+    name: '集采管理',
+    path: '/group-procurement',
+    icon: 'TeamOutlined',
+    type: 1,
+    permission: 'group-procurement:manage',
+    status: 1,
+    sort: 30,
+  }
+  if (productCenter) {
+    productCenter.children = [...(productCenter.children || []), menu]
+    return cloned
+  }
+  cloned.push(menu)
+  return cloned
+}
+
 const pageMeta: Record<string, { title: string; description: string }> = {
   '/dashboard': { title: '数据概览', description: '平台数据总览与待办事项' },
   '/system/admin': { title: '管理员管理', description: '管理后台账号与权限' },
@@ -178,6 +211,7 @@ const pageMeta: Record<string, { title: string; description: string }> = {
   '/service-offers/finance': { title: '金融服务审核', description: '审核资金方上架的金融服务产品' },
   '/product': { title: '商品管理', description: '商品信息与审核管理' },
   '/product/order': { title: '订单管理', description: '交易订单与履约管理' },
+  '/group-procurement': { title: '集采管理', description: '发起商品集采、跟踪卖家响应和参团订单' },
   '/product/category': { title: '类目配置', description: '商品类目结构管理' },
   '/ai-procurement/monitor': { title: 'AI采购运营监控', description: '查看AI采购流程状态、异常和运行配置' },
   '/ai-procurement/config': { title: 'AI采购配置', description: '配置AI采购流程、模型、商品匹配、融资与审核策略' },
@@ -225,10 +259,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     if (menuLoadFailed) {
       return fallbackMenuItems
     }
-    return apiMenuToAntd(apiMenus)
+    return apiMenuToAntd(withLocalMenus(apiMenus))
   }, [apiMenus, menuLoadFailed])
   const allowedPaths = useMemo(() => {
-    return collectMenuPaths(apiMenus)
+    return collectMenuPaths(withLocalMenus(apiMenus))
   }, [apiMenus])
   const currentPath = canonicalMenuPath(location.pathname)
   const firstAllowedPath = allowedPaths[0] || ''
@@ -246,7 +280,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     const path = currentPath
     if (path.startsWith('/system')) return ['/system']
     if (path === '/user' || path.startsWith('/enterprise') || path.startsWith('/service-offers') || path.startsWith('/supply-demands')) return ['/business']
-    if (path.startsWith('/product')) return ['/product-center']
+    if (path.startsWith('/product') || path.startsWith('/group-procurement')) return ['/product-center']
     if (path.startsWith('/ai-procurement')) return ['/ai-procurement']
     return []
   }
