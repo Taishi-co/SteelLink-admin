@@ -1630,6 +1630,10 @@ func ListProducts(c *gin.Context) {
 	if columnExists(ctx, db, "products", "auditor_id") {
 		auditorIDExpr = "COALESCE(auditor_id, 0)"
 	}
+	availableQtyExpr := "COALESCE(quantity, 0)"
+	if columnExists(ctx, db, "products", "available_qty") {
+		availableQtyExpr = "COALESCE(available_qty, quantity, 0)"
+	}
 
 	total, err := queryCount(ctx, db, fmt.Sprintf(`SELECT COUNT(*) FROM products WHERE %s`, whereClause), args...)
 	if err != nil {
@@ -1642,13 +1646,13 @@ func ListProducts(c *gin.Context) {
 		SELECT id, name, enterprise_id, COALESCE(category, ''), COALESCE(sub_category, ''), COALESCE(steel_mill, ''),
 		       %s, %s, %s,
 		       spec, warehouse_info, COALESCE(bundle_no, ''), COALESCE(product_no, ''),
-		       COALESCE(unit, ''), COALESCE(unit_price, 0), COALESCE(quantity, 0), COALESCE(min_order_qty, 0),
+		       COALESCE(unit, ''), COALESCE(unit_price, 0), COALESCE(quantity, 0), %s, COALESCE(min_order_qty, 0),
 		       COALESCE(delivery_days, 0), COALESCE(quote_validity, 0),
 		       COALESCE(description, ''), images, status, created_at, COALESCE(audit_remark, ''), %s, approved_at, updated_at
 		FROM products
 		WHERE %s
 		ORDER BY id DESC
-		LIMIT ? OFFSET ?`, goodsTypeExpr, warehouseServiceIDExpr, warehouseEnterpriseIDExpr, auditorIDExpr, whereClause), queryArgs...)
+		LIMIT ? OFFSET ?`, goodsTypeExpr, warehouseServiceIDExpr, warehouseEnterpriseIDExpr, availableQtyExpr, auditorIDExpr, whereClause), queryArgs...)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 		return
@@ -1665,15 +1669,17 @@ func ListProducts(c *gin.Context) {
 		var auditRemark sql.NullString
 		var auditedAt sql.NullTime
 		var updatedAt sql.NullTime
+		var availableQty float64
 		if err := rows.Scan(&item.ID, &item.Name, &item.EnterpriseID, &item.Category, &item.SubCategory, &item.SteelMill,
 			&item.GoodsType, &item.WarehouseServiceID, &item.WarehouseEnterpriseID,
 			&rawSpec, &rawWarehouse, &item.BundleNo, &item.ProductNo,
-			&item.Unit, &item.Price, &item.Stock, &item.MinOrderQty,
+			&item.Unit, &item.Price, &item.Stock, &availableQty, &item.MinOrderQty,
 			&item.DeliveryDays, &item.QuoteValidity,
 			&item.Description, &imageJSON, &rawStatus, &item.CreatedAt, &auditRemark, &item.AuditorID, &auditedAt, &updatedAt); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 			return
 		}
+		item.AvailableQty = &availableQty
 		item.Images = parseImages(imageJSON)
 		item.Status = mapProductIntStatus(rawStatus)
 		specInfo := parseProductSpec(rawSpec)
