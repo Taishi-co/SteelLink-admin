@@ -60,28 +60,39 @@ type groupProcurementItem struct {
 }
 
 type groupParticipantItem struct {
-	ID                int64      `json:"id"`
-	ActivityID        int64      `json:"activityId"`
-	BuyerEnterpriseID int64      `json:"buyerEnterpriseId"`
-	BuyerUserID       int64      `json:"buyerUserId"`
-	BuyerName         string     `json:"buyerName"`
-	Quantity          float64    `json:"quantity"`
-	Unit              string     `json:"unit"`
-	UnitPrice         float64    `json:"unitPrice"`
-	TotalAmount       float64    `json:"totalAmount"`
-	ContactName       string     `json:"contactName"`
-	ContactPhone      string     `json:"contactPhone"`
-	DeliveryAddress   string     `json:"deliveryAddress"`
-	AgreementSigned   bool       `json:"agreementSigned"`
-	AgreementSignedAt *time.Time `json:"agreementSignedAt,omitempty"`
-	Status            string     `json:"status"`
-	ChildOrderID      int64      `json:"childOrderId"`
-	ChildOrderNo      string     `json:"childOrderNo"`
-	ChildOrderStatus  int        `json:"childOrderStatus"`
-	ChildOrderUpdated *time.Time `json:"childOrderUpdatedAt,omitempty"`
-	Remark            string     `json:"remark"`
-	CreatedAt         time.Time  `json:"createdAt"`
-	UpdatedAt         time.Time  `json:"updatedAt"`
+	ID                        int64      `json:"id"`
+	ActivityID                int64      `json:"activityId"`
+	BuyerEnterpriseID         int64      `json:"buyerEnterpriseId"`
+	BuyerUserID               int64      `json:"buyerUserId"`
+	BuyerName                 string     `json:"buyerName"`
+	Quantity                  float64    `json:"quantity"`
+	Unit                      string     `json:"unit"`
+	UnitPrice                 float64    `json:"unitPrice"`
+	TotalAmount               float64    `json:"totalAmount"`
+	ContactName               string     `json:"contactName"`
+	ContactPhone              string     `json:"contactPhone"`
+	DeliveryAddressSource     string     `json:"deliveryAddressSource"`
+	DestWarehouseServiceID    int64      `json:"destWarehouseServiceId"`
+	DestWarehouseEnterpriseID int64      `json:"destWarehouseEnterpriseId"`
+	DestWarehouseName         string     `json:"destWarehouseName"`
+	DestWarehouseProvince     string     `json:"destWarehouseProvince"`
+	DestWarehouseCity         string     `json:"destWarehouseCity"`
+	DestWarehouseDistrict     string     `json:"destWarehouseDistrict"`
+	DestWarehouseAddress      string     `json:"destWarehouseAddress"`
+	DeliveryAddress           string     `json:"deliveryAddress"`
+	DeliveryMethod            string     `json:"deliveryMethod"`
+	PaymentMethod             string     `json:"paymentMethod"`
+	DeliveryNote              string     `json:"deliveryNote"`
+	AgreementSigned           bool       `json:"agreementSigned"`
+	AgreementSignedAt         *time.Time `json:"agreementSignedAt,omitempty"`
+	Status                    string     `json:"status"`
+	ChildOrderID              int64      `json:"childOrderId"`
+	ChildOrderNo              string     `json:"childOrderNo"`
+	ChildOrderStatus          int        `json:"childOrderStatus"`
+	ChildOrderUpdated         *time.Time `json:"childOrderUpdatedAt,omitempty"`
+	Remark                    string     `json:"remark"`
+	CreatedAt                 time.Time  `json:"createdAt"`
+	UpdatedAt                 time.Time  `json:"updatedAt"`
 }
 
 type groupProcurementRequestItem struct {
@@ -750,7 +761,10 @@ func listGroupParticipants(ctx context.Context, db *sql.DB, activityID int64) ([
 	rows, err := db.QueryContext(ctx, `
 		SELECT p.id, p.activity_id, COALESCE(p.buyer_enterprise_id,0), COALESCE(p.buyer_user_id,0), COALESCE(p.buyer_name,''), COALESCE(p.quantity,0),
 		       COALESCE(p.unit,'吨'), COALESCE(p.unit_price,0), COALESCE(p.total_amount,0), COALESCE(p.contact_name,''), COALESCE(p.contact_phone,''),
+		       COALESCE(p.delivery_address_source,''), COALESCE(p.dest_warehouse_service_id,0), COALESCE(p.dest_warehouse_enterprise_id,0),
+		       COALESCE(p.dest_warehouse_name,''), COALESCE(p.dest_warehouse_province,''), COALESCE(p.dest_warehouse_city,''), COALESCE(p.dest_warehouse_district,''), COALESCE(p.dest_warehouse_address,''),
 		       COALESCE(p.delivery_address,''), COALESCE(p.agreement_signed,0), p.agreement_signed_at, COALESCE(p.status,'joined'),
+		       COALESCE(p.delivery_method,''), COALESCE(p.payment_method,''), COALESCE(p.delivery_note,''),
 		       COALESCE(p.child_order_id,0), COALESCE(p.child_order_no,''), COALESCE(o.status,0), o.updated_at,
 		       COALESCE(p.remark,''), p.created_at, p.updated_at
 		FROM procurement_participants p
@@ -765,7 +779,7 @@ func listGroupParticipants(ctx context.Context, db *sql.DB, activityID int64) ([
 	for rows.Next() {
 		var item groupParticipantItem
 		var signedAt, childOrderUpdated sql.NullTime
-		if err := rows.Scan(&item.ID, &item.ActivityID, &item.BuyerEnterpriseID, &item.BuyerUserID, &item.BuyerName, &item.Quantity, &item.Unit, &item.UnitPrice, &item.TotalAmount, &item.ContactName, &item.ContactPhone, &item.DeliveryAddress, &item.AgreementSigned, &signedAt, &item.Status, &item.ChildOrderID, &item.ChildOrderNo, &item.ChildOrderStatus, &childOrderUpdated, &item.Remark, &item.CreatedAt, &item.UpdatedAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.ActivityID, &item.BuyerEnterpriseID, &item.BuyerUserID, &item.BuyerName, &item.Quantity, &item.Unit, &item.UnitPrice, &item.TotalAmount, &item.ContactName, &item.ContactPhone, &item.DeliveryAddressSource, &item.DestWarehouseServiceID, &item.DestWarehouseEnterpriseID, &item.DestWarehouseName, &item.DestWarehouseProvince, &item.DestWarehouseCity, &item.DestWarehouseDistrict, &item.DestWarehouseAddress, &item.DeliveryAddress, &item.AgreementSigned, &signedAt, &item.Status, &item.DeliveryMethod, &item.PaymentMethod, &item.DeliveryNote, &item.ChildOrderID, &item.ChildOrderNo, &item.ChildOrderStatus, &childOrderUpdated, &item.Remark, &item.CreatedAt, &item.UpdatedAt); err != nil {
 			return nil, err
 		}
 		if signedAt.Valid {
@@ -847,23 +861,41 @@ func createGroupOrders(ctx context.Context, db *sql.DB, activity groupProcuremen
 		childItems := buildGroupOrderItems(product, activity.GroupPrice, participant.Quantity)
 		delivery := productDeliveryInfo(product.WarehouseInfo)
 		delivery["address"] = participant.DeliveryAddress
-		childRemark := map[string]any{
-			"source":               "group_procurement_child",
-			"group_procurement_id": activity.ID,
-			"master_order_id":      masterID,
-			"master_order_no":      masterNo,
-			"contact_name":         participant.ContactName,
-			"contact_phone":        participant.ContactPhone,
-			"agreement_signed":     participant.AgreementSigned,
+		if participant.DestWarehouseServiceID > 0 {
+			delivery["dest_warehouse_service_id"] = participant.DestWarehouseServiceID
+			delivery["dest_warehouse_enterprise_id"] = participant.DestWarehouseEnterpriseID
+			delivery["dest_warehouse_name"] = participant.DestWarehouseName
+			delivery["dest_warehouse_province"] = participant.DestWarehouseProvince
+			delivery["dest_warehouse_city"] = participant.DestWarehouseCity
+			delivery["dest_warehouse_district"] = participant.DestWarehouseDistrict
+			delivery["dest_warehouse_address"] = participant.DestWarehouseAddress
 		}
-		childID, err := insertGroupOrder(ctx, tx, childNo, participant.BuyerEnterpriseID, participant.BuyerName, activity.SellerEnterpriseID, activity.SellerName, childItems, activity.GroupPrice*participant.Quantity, 12, delivery, childRemark, adminID, now, expiresAt)
+		childStatus := 12
+		if participant.DestWarehouseServiceID > 0 {
+			childStatus = 13
+		}
+		childRemark := map[string]any{
+			"source":                  "group_procurement_child",
+			"group_procurement_id":    activity.ID,
+			"master_order_id":         masterID,
+			"master_order_no":         masterNo,
+			"contact_name":            participant.ContactName,
+			"contact_phone":           participant.ContactPhone,
+			"delivery_address_source": participant.DeliveryAddressSource,
+			"delivery_address":        participant.DeliveryAddress,
+			"delivery_method":         participant.DeliveryMethod,
+			"payment_method":          participant.PaymentMethod,
+			"delivery_note":           participant.DeliveryNote,
+			"agreement_signed":        participant.AgreementSigned,
+		}
+		childID, err := insertGroupOrder(ctx, tx, childNo, participant.BuyerEnterpriseID, participant.BuyerName, activity.SellerEnterpriseID, activity.SellerName, childItems, activity.GroupPrice*participant.Quantity, childStatus, delivery, childRemark, adminID, now, expiresAt)
 		if err != nil {
 			return 0, "", err
 		}
 		if _, err := tx.ExecContext(ctx, `UPDATE procurement_participants SET status = 'order_created', child_order_id = ?, child_order_no = ?, updated_at = ? WHERE id = ?`, childID, childNo, now, participant.ID); err != nil {
 			return 0, "", err
 		}
-		if err := insertGroupOrderEvent(ctx, tx, childID, childNo, "group_procurement_child_created", adminID, participant.BuyerEnterpriseID, 0, 12, childRemark, now); err != nil {
+		if err := insertGroupOrderEvent(ctx, tx, childID, childNo, "group_procurement_child_created", adminID, participant.BuyerEnterpriseID, 0, childStatus, childRemark, now); err != nil {
 			return 0, "", err
 		}
 	}
@@ -1014,7 +1046,18 @@ func ensureGroupProcurementSchema(ctx context.Context, db *sql.DB) error {
 			total_amount DECIMAL(16,2) DEFAULT 0,
 			contact_name VARCHAR(80),
 			contact_phone VARCHAR(40),
+			delivery_address_source VARCHAR(32),
+			dest_warehouse_service_id BIGINT UNSIGNED DEFAULT 0,
+			dest_warehouse_enterprise_id BIGINT UNSIGNED DEFAULT 0,
+			dest_warehouse_name VARCHAR(200),
+			dest_warehouse_province VARCHAR(80),
+			dest_warehouse_city VARCHAR(80),
+			dest_warehouse_district VARCHAR(80),
+			dest_warehouse_address VARCHAR(500),
 			delivery_address VARCHAR(500),
+			delivery_method VARCHAR(60),
+			payment_method VARCHAR(60),
+			delivery_note VARCHAR(500),
 			agreement_signed TINYINT(1) DEFAULT 0,
 			agreement_signed_at DATETIME NULL,
 			status VARCHAR(32) DEFAULT 'joined',
@@ -1074,6 +1117,26 @@ func ensureGroupProcurementSchema(ctx context.Context, db *sql.DB) error {
 	for name, definition := range columns {
 		if !columnExists(ctx, db, "procurement_activities", name) {
 			if _, err := db.ExecContext(ctx, fmt.Sprintf("ALTER TABLE procurement_activities ADD COLUMN %s %s", name, definition)); err != nil {
+				return err
+			}
+		}
+	}
+	participantColumns := map[string]string{
+		"delivery_address_source":      "VARCHAR(32)",
+		"dest_warehouse_service_id":    "BIGINT UNSIGNED DEFAULT 0",
+		"dest_warehouse_enterprise_id": "BIGINT UNSIGNED DEFAULT 0",
+		"dest_warehouse_name":          "VARCHAR(200)",
+		"dest_warehouse_province":      "VARCHAR(80)",
+		"dest_warehouse_city":          "VARCHAR(80)",
+		"dest_warehouse_district":      "VARCHAR(80)",
+		"dest_warehouse_address":       "VARCHAR(500)",
+		"delivery_method":              "VARCHAR(60)",
+		"payment_method":               "VARCHAR(60)",
+		"delivery_note":                "VARCHAR(500)",
+	}
+	for name, definition := range participantColumns {
+		if !columnExists(ctx, db, "procurement_participants", name) {
+			if _, err := db.ExecContext(ctx, fmt.Sprintf("ALTER TABLE procurement_participants ADD COLUMN %s %s", name, definition)); err != nil {
 				return err
 			}
 		}
