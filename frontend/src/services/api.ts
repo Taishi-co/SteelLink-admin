@@ -261,6 +261,7 @@ export interface ProductItem {
   unit?: string
   price: number
   stock: number
+  availableQty?: number
   minOrderQty?: number
   deliveryDays?: number
   quoteValidity?: number
@@ -374,7 +375,8 @@ const normalizeProduct = (item: BackendProductItem): ProductItem => {
     bundleNo: item.bundleNo ?? item.bundle_no,
     spec: typeof item.spec === 'string' ? item.spec : item.spec ? JSON.stringify(item.spec) : undefined,
     price: item.price ?? item.unit_price ?? 0,
-    stock: item.stock ?? item.available_qty ?? item.quantity ?? 0,
+    stock: item.stock ?? item.quantity ?? item.available_qty ?? 0,
+    availableQty: item.availableQty ?? item.available_qty,
     minOrderQty: item.minOrderQty ?? item.min_order_qty,
     deliveryDays: item.deliveryDays ?? item.delivery_days,
     quoteValidity: item.quoteValidity ?? item.quote_validity,
@@ -413,7 +415,18 @@ export interface GroupParticipantItem {
   totalAmount: number
   contactName: string
   contactPhone: string
+  deliveryAddressSource?: string
+  destWarehouseServiceId?: number
+  destWarehouseEnterpriseId?: number
+  destWarehouseName?: string
+  destWarehouseProvince?: string
+  destWarehouseCity?: string
+  destWarehouseDistrict?: string
+  destWarehouseAddress?: string
   deliveryAddress: string
+  deliveryMethod?: string
+  paymentMethod?: string
+  deliveryNote?: string
   agreementSigned: boolean
   agreementSignedAt?: string
   status: string

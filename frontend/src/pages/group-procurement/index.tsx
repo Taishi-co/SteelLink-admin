@@ -103,7 +103,23 @@ function money(value: number) {
 }
 
 function quantity(value: number, unit?: string) {
-  return `${Number(value || 0).toLocaleString()}${unit || '吨'}`
+  return `${Number(value || 0).toLocaleString()} ${unit || '吨'}`
+}
+
+function availableStock(product?: ProductItem) {
+  return product?.availableQty ?? product?.stock ?? 0
+}
+
+function deliveryMethodText(value?: string) {
+  if (value === 'self') return '自行安排物流'
+  if (value === 'platform_logistics') return '平台物流'
+  return value || '-'
+}
+
+function paymentMethodText(value?: string) {
+  if (value === 'offline') return '线下转账'
+  if (value === 'online') return '平台线上支付'
+  return value || '-'
 }
 
 function procurementStep(status?: string) {
@@ -263,7 +279,18 @@ export default function GroupProcurementPage() {
     { title: '数量', key: 'quantity', width: 120, render: (_, row) => `${row.quantity}${row.unit || '吨'}` },
     { title: '金额', dataIndex: 'totalAmount', width: 120, render: money },
     { title: '联系人', key: 'contact', width: 160, render: (_, row) => `${row.contactName} ${row.contactPhone}` },
-    { title: '收货地址', dataIndex: 'deliveryAddress', width: 260 },
+    {
+      title: '收货信息',
+      key: 'delivery',
+      width: 300,
+      render: (_, row) => (
+        <Space direction="vertical" size={0}>
+          {row.destWarehouseName ? <Text>{row.destWarehouseName}</Text> : null}
+          <Text type="secondary">{row.deliveryAddress || row.destWarehouseAddress || '-'}</Text>
+          <Text type="secondary">{deliveryMethodText(row.deliveryMethod)} / {paymentMethodText(row.paymentMethod)}</Text>
+        </Space>
+      ),
+    },
     { title: '状态', dataIndex: 'status', width: 110, render: participantStatusTag },
     { title: '子订单', dataIndex: 'childOrderNo', width: 170, render: (value) => value || '-' },
     { title: '订单进度', key: 'childOrderStatus', width: 140, render: (_, row) => row.childOrderId ? orderStatusTag(row.childOrderStatus) : '-' },
@@ -296,7 +323,7 @@ export default function GroupProcurementPage() {
     { title: '卖家企业', dataIndex: 'enterpriseId', width: 100, render: (value) => value ? `#${value}` : '-' },
     { title: '品类', key: 'category', width: 160, render: (_, row) => row.subCategory || row.category || '-' },
     { title: '价格', dataIndex: 'price', width: 110, render: money },
-    { title: '可用库存', key: 'stock', width: 120, render: (_, row) => quantity(row.stock, row.unit) },
+    { title: '可用库存', key: 'availableQty', width: 120, render: (_, row) => quantity(availableStock(row), row.unit) },
     { title: '最小起订', key: 'minOrderQty', width: 120, render: (_, row) => quantity(row.minOrderQty || 0, row.unit) },
     { title: '仓库', key: 'warehouse', width: 180, render: (_, row) => row.warehouseName || [row.province, row.city, row.district].filter(Boolean).join('/') || '-' },
     {
@@ -549,7 +576,7 @@ export default function GroupProcurementPage() {
               <Descriptions.Item label="卖家企业">#{selectedProduct.enterpriseId}</Descriptions.Item>
               <Descriptions.Item label="集采品类">{selectedProduct.subCategory || selectedProduct.category || '-'}</Descriptions.Item>
               <Descriptions.Item label="当前价格">{money(selectedProduct.price)}</Descriptions.Item>
-              <Descriptions.Item label="可用库存">{quantity(selectedProduct.stock, selectedProduct.unit)}</Descriptions.Item>
+              <Descriptions.Item label="可用库存">{quantity(availableStock(selectedProduct), selectedProduct.unit)}</Descriptions.Item>
             </Descriptions>
           ) : null}
 
