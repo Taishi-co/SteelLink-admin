@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type Key } from 'react'
 import { Button, Card, Col, Descriptions, Drawer, Form, Input, InputNumber, Modal, Popconfirm, Row, Select, Space, Statistic, Steps, Table, Tag, Typography, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -19,8 +19,11 @@ const statusMeta: Record<string, { color: string; text: string }> = {
 
 const requestStatusMeta: Record<string, { color: string; text: string }> = {
   pending: { color: 'gold', text: '待处理' },
+  selected: { color: 'blue', text: '已选择' },
+  invited: { color: 'cyan', text: '已邀请' },
   accepted: { color: 'green', text: '已采纳' },
   rejected: { color: 'red', text: '已拒绝' },
+  expired: { color: 'default', text: '已过期' },
 }
 
 const participantStatusMeta: Record<string, { color: string; text: string }> = {
@@ -140,11 +143,13 @@ export default function GroupProcurementPage() {
   const [params, setParams] = useState<GroupProcurementPageParams>({ page: 1, pageSize: 10 })
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
-  const [sourceRequest, setSourceRequest] = useState<GroupProcurementRequestItem | null>(null)
+  const [sourceRequests, setSourceRequests] = useState<GroupProcurementRequestItem[]>([])
   const [selectedProduct, setSelectedProduct] = useState<ProductItem | null>(null)
   const [productKeyword, setProductKeyword] = useState('')
   const [productParams, setProductParams] = useState<PageParams>({ page: 1, pageSize: 5, status: 2 })
-  const [createForm] = Form.useForm<{ requestId?: number; productId?: number; title?: string; targetQuantity?: number; durationHours?: number; adminRemark?: string }>()
+  const [selectedRequestRowKeys, setSelectedRequestRowKeys] = useState<Key[]>([])
+  const [selectedRequestRows, setSelectedRequestRows] = useState<GroupProcurementRequestItem[]>([])
+  const [createForm] = Form.useForm<{ requestIds?: number[]; productId?: number; title?: string; targetQuantity?: number; durationHours?: number; adminRemark?: string }>()
 
   const { data, isLoading } = useQuery({
     queryKey: ['group-procurements', params],
@@ -170,7 +175,9 @@ export default function GroupProcurementPage() {
     onSuccess: () => {
       message.success('集采申请已发送给卖家')
       setCreateOpen(false)
-      setSourceRequest(null)
+      setSourceRequests([])
+      setSelectedRequestRowKeys([])
+      setSelectedRequestRows([])
       setSelectedProduct(null)
       setProductKeyword('')
       createForm.resetFields()
@@ -208,31 +215,33 @@ export default function GroupProcurementPage() {
   const orderedCount = rows.filter((item) => item.status === 'order_created').length
   const demandQuantity = rows.reduce((sum, item) => sum + Number(item.demandQuantity || 0), 0)
 
-  const openCreateModal = (request?: GroupProcurementRequestItem) => {
+  const openCreateModal = (requestsForCreate: GroupProcurementRequestItem[] = []) => {
+    const primaryRequest = requestsForCreate[0]
+    const totalQuantity = requestsForCreate.reduce((sum, item) => sum + Number(item.quantity || 0), 0)
     const nextParams: PageParams = {
       page: 1,
       pageSize: 5,
       status: 2,
-      keyword: request ? request.productName || request.category : undefined,
+      keyword: primaryRequest ? primaryRequest.productName || primaryRequest.category : undefined,
     }
     setProductParams(nextParams)
     setProductKeyword(nextParams.keyword || '')
-    setSourceRequest(request || null)
+    setSourceRequests(requestsForCreate)
     setSelectedProduct(null)
     createForm.setFieldsValue({
-      requestId: request?.id,
+      requestIds: requestsForCreate.map((item) => item.id),
       productId: undefined,
-      title: request ? `平台集采：${request.productName}` : undefined,
-      targetQuantity: request?.quantity,
+      title: primaryRequest ? `平台集采：${primaryRequest.productName}` : undefined,
+      targetQuantity: totalQuantity || undefined,
       durationHours: 24,
-      adminRemark: request?.remark,
+      adminRemark: requestsForCreate.map((item) => item.remark).filter(Boolean).join('\n'),
     })
     setCreateOpen(true)
   }
 
   const closeCreateModal = () => {
     setCreateOpen(false)
-    setSourceRequest(null)
+    setSourceRequests([])
     setSelectedProduct(null)
     setProductKeyword('')
     createForm.resetFields()
@@ -358,7 +367,7 @@ export default function GroupProcurementPage() {
       width: 180,
       render: (_, row) => row.status === 'pending' ? (
         <Space>
-          <Button type="link" size="small" icon={<PlusOutlined />} onClick={() => openCreateModal(row)}>采纳发起</Button>
+          <Button type="link" size="small" icon={<PlusOutlined />} onClick={() => openCreateModal([row])}>采纳发起</Button>
           <Popconfirm title="驳回该集采申请？" okText="确认驳回" cancelText="取消" onConfirm={() => rejectRequestMutation.mutate({ id: row.id })}>
             <Button type="link" danger size="small" loading={rejectRequestMutation.isPending}>驳回</Button>
           </Popconfirm>
@@ -436,8 +445,35 @@ export default function GroupProcurementPage() {
         />
       </Card>
 
-      <Card title="待处理集采申请">
-        <Table rowKey="id" loading={requestLoading} columns={requestColumns} dataSource={requests} scroll={{ x: 1000 }} pagination={false} />
+      <Card
+        title="待处理集采申请"
+        extra={
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            disabled={selectedRequestRows.length === 0}
+            onClick={() => openCreateModal(selectedRequestRows)}
+          >
+            关联所选申请发起集采
+          </Button>
+        }
+      >
+        <Table
+          rowKey="id"
+          loading={requestLoading}
+          columns={requestColumns}
+          dataSource={requests}
+          scroll={{ x: 1300 }}
+          pagination={false}
+          rowSelection={{
+            selectedRowKeys: selectedRequestRowKeys,
+            getCheckboxProps: (record) => ({ disabled: record.status !== 'pending' }),
+            onChange: (keys, rows) => {
+              setSelectedRequestRowKeys(keys)
+              setSelectedRequestRows(rows)
+            },
+          }}
+        />
       </Card>
 
       <Drawer
@@ -509,7 +545,7 @@ export default function GroupProcurementPage() {
               return
             }
             createMutation.mutate({
-              requestId: values.requestId,
+              requestIds: values.requestIds,
               productId: values.productId,
               title: values.title,
               targetQuantity: values.targetQuantity,
@@ -520,19 +556,25 @@ export default function GroupProcurementPage() {
         }}
       >
         <Form form={createForm} layout="vertical" initialValues={{ durationHours: 24 }}>
-          <Form.Item name="requestId" hidden><InputNumber /></Form.Item>
+          <Form.Item name="requestIds" hidden><Select mode="multiple" /></Form.Item>
           <Form.Item name="productId" hidden rules={[{ required: true, message: '请从商品列表选择商品' }]}><InputNumber /></Form.Item>
-          {sourceRequest ? (
+          {sourceRequests.length > 0 ? (
             <Card size="small" className="mb-4" title="来源集采申请">
-              <Descriptions column={3} size="small">
-                <Descriptions.Item label="申请编号">{sourceRequest.requestNo}</Descriptions.Item>
-                <Descriptions.Item label="申请企业">{sourceRequest.buyerName}</Descriptions.Item>
-                <Descriptions.Item label="来源">{sourceRequest.source}</Descriptions.Item>
-                <Descriptions.Item label="品类">{sourceRequest.category}</Descriptions.Item>
-                <Descriptions.Item label="采购物品">{sourceRequest.productName}</Descriptions.Item>
-                <Descriptions.Item label="需求量">{quantity(sourceRequest.quantity, sourceRequest.unit)}</Descriptions.Item>
-                <Descriptions.Item label="收货地址" span={3}>{sourceRequest.deliveryAddress || '-'}</Descriptions.Item>
-              </Descriptions>
+              <Table
+                rowKey="id"
+                size="small"
+                pagination={false}
+                dataSource={sourceRequests}
+                columns={[
+                  { title: '申请编号', dataIndex: 'requestNo', width: 170 },
+                  { title: '申请企业', dataIndex: 'buyerName', width: 180 },
+                  { title: '来源', dataIndex: 'source', width: 100 },
+                  { title: '品类', dataIndex: 'category', width: 120 },
+                  { title: '采购物品', dataIndex: 'productName', width: 180 },
+                  { title: '需求量', key: 'quantity', width: 120, render: (_, row) => quantity(row.quantity, row.unit) },
+                  { title: '收货地址', dataIndex: 'deliveryAddress', ellipsis: true },
+                ]}
+              />
             </Card>
           ) : null}
 
