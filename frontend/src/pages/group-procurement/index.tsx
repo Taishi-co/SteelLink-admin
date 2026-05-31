@@ -109,6 +109,10 @@ function quantity(value: number, unit?: string) {
   return `${Number(value || 0).toLocaleString()} ${unit || '吨'}`
 }
 
+function stockQuantity(value: number) {
+  return quantity(value, '吨')
+}
+
 function availableStock(product?: ProductItem) {
   return product?.availableQty ?? product?.stock ?? 0
 }
@@ -332,8 +336,8 @@ export default function GroupProcurementPage() {
     { title: '卖家企业', dataIndex: 'enterpriseId', width: 100, render: (value) => value ? `#${value}` : '-' },
     { title: '品类', key: 'category', width: 160, render: (_, row) => row.subCategory || row.category || '-' },
     { title: '价格', dataIndex: 'price', width: 110, render: money },
-    { title: '可用库存', key: 'availableQty', width: 120, render: (_, row) => quantity(availableStock(row), row.unit) },
-    { title: '最小起订', key: 'minOrderQty', width: 120, render: (_, row) => quantity(row.minOrderQty || 0, row.unit) },
+    { title: '可用库存', key: 'availableQty', width: 120, render: (_, row) => stockQuantity(availableStock(row)) },
+    { title: '最小起订', key: 'minOrderQty', width: 120, render: (_, row) => stockQuantity(row.minOrderQty || 0) },
     { title: '仓库', key: 'warehouse', width: 180, render: (_, row) => row.warehouseName || [row.province, row.city, row.district].filter(Boolean).join('/') || '-' },
     {
       title: '操作',
@@ -618,7 +622,7 @@ export default function GroupProcurementPage() {
               <Descriptions.Item label="卖家企业">#{selectedProduct.enterpriseId}</Descriptions.Item>
               <Descriptions.Item label="集采品类">{selectedProduct.subCategory || selectedProduct.category || '-'}</Descriptions.Item>
               <Descriptions.Item label="当前价格">{money(selectedProduct.price)}</Descriptions.Item>
-              <Descriptions.Item label="可用库存">{quantity(availableStock(selectedProduct), selectedProduct.unit)}</Descriptions.Item>
+              <Descriptions.Item label="可用库存">{stockQuantity(availableStock(selectedProduct))}</Descriptions.Item>
             </Descriptions>
           ) : null}
 
