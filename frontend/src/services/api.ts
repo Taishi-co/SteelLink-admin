@@ -415,7 +415,18 @@ export interface GroupParticipantItem {
   totalAmount: number
   contactName: string
   contactPhone: string
+  deliveryAddressSource?: string
+  destWarehouseServiceId?: number
+  destWarehouseEnterpriseId?: number
+  destWarehouseName?: string
+  destWarehouseProvince?: string
+  destWarehouseCity?: string
+  destWarehouseDistrict?: string
+  destWarehouseAddress?: string
   deliveryAddress: string
+  deliveryMethod?: string
+  paymentMethod?: string
+  deliveryNote?: string
   agreementSigned: boolean
   agreementSignedAt?: string
   status: string

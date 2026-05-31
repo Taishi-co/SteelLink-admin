@@ -110,6 +110,18 @@ function availableStock(product?: ProductItem) {
   return product?.availableQty ?? product?.stock ?? 0
 }
 
+function deliveryMethodText(value?: string) {
+  if (value === 'self') return '自行安排物流'
+  if (value === 'platform_logistics') return '平台物流'
+  return value || '-'
+}
+
+function paymentMethodText(value?: string) {
+  if (value === 'offline') return '线下转账'
+  if (value === 'online') return '平台线上支付'
+  return value || '-'
+}
+
 function procurementStep(status?: string) {
   if (status === 'pending_seller' || status === 'seller_rejected') return 1
   if (status === 'active' || status === 'ended') return 2
@@ -267,7 +279,18 @@ export default function GroupProcurementPage() {
     { title: '数量', key: 'quantity', width: 120, render: (_, row) => `${row.quantity}${row.unit || '吨'}` },
     { title: '金额', dataIndex: 'totalAmount', width: 120, render: money },
     { title: '联系人', key: 'contact', width: 160, render: (_, row) => `${row.contactName} ${row.contactPhone}` },
-    { title: '收货地址', dataIndex: 'deliveryAddress', width: 260 },
+    {
+      title: '收货信息',
+      key: 'delivery',
+      width: 300,
+      render: (_, row) => (
+        <Space direction="vertical" size={0}>
+          {row.destWarehouseName ? <Text>{row.destWarehouseName}</Text> : null}
+          <Text type="secondary">{row.deliveryAddress || row.destWarehouseAddress || '-'}</Text>
+          <Text type="secondary">{deliveryMethodText(row.deliveryMethod)} / {paymentMethodText(row.paymentMethod)}</Text>
+        </Space>
+      ),
+    },
     { title: '状态', dataIndex: 'status', width: 110, render: participantStatusTag },
     { title: '子订单', dataIndex: 'childOrderNo', width: 170, render: (value) => value || '-' },
     { title: '订单进度', key: 'childOrderStatus', width: 140, render: (_, row) => row.childOrderId ? orderStatusTag(row.childOrderStatus) : '-' },
