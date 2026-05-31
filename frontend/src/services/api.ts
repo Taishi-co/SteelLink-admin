@@ -485,11 +485,26 @@ export interface GroupProcurementRequestItem {
   id: number
   requestNo: string
   source: string
+  sourceProductId?: number
+  aiProcurementId?: number
   category: string
+  subCategory?: string
   productName: string
+  material?: string
+  spec?: string
   quantity: number
   unit: string
+  targetPrice?: number
+  contactName?: string
+  contactPhone?: string
+  deliveryAddressSource?: string
+  destWarehouseServiceId?: number
+  destWarehouseName?: string
+  destWarehouseAddress?: string
   deliveryAddress: string
+  deliveryMethod?: string
+  paymentMethod?: string
+  deliveryNote?: string
   buyerEnterpriseId: number
   buyerUserId: number
   buyerName: string
@@ -513,7 +528,7 @@ export const groupProcurementApi = {
   list: (params: GroupProcurementPageParams) =>
     get<PageResult<GroupProcurementItem>>('/group-procurements', { params: { ...params, page_size: params.pageSize } }),
   get: (id: number) => get<GroupProcurementItem>(`/group-procurements/${id}`),
-  create: (data: { requestId?: number; productId: number; title?: string; targetQuantity?: number; durationHours?: number; adminRemark?: string }) =>
+  create: (data: { requestId?: number; requestIds?: number[]; productId: number; title?: string; targetQuantity?: number; durationHours?: number; adminRemark?: string }) =>
     post<GroupProcurementItem>('/group-procurements', data),
   end: (id: number, data?: { remark?: string }) => post<GroupProcurementItem>(`/group-procurements/${id}/end`, data || {}),
   listRequests: (params: GroupProcurementRequestPageParams) =>

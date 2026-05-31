@@ -96,26 +96,46 @@ type groupParticipantItem struct {
 }
 
 type groupProcurementRequestItem struct {
-	ID                int64     `json:"id"`
-	RequestNo         string    `json:"requestNo"`
-	Source            string    `json:"source"`
-	Category          string    `json:"category"`
-	ProductName       string    `json:"productName"`
-	Quantity          float64   `json:"quantity"`
-	Unit              string    `json:"unit"`
-	DeliveryAddress   string    `json:"deliveryAddress"`
-	BuyerEnterpriseID int64     `json:"buyerEnterpriseId"`
-	BuyerUserID       int64     `json:"buyerUserId"`
-	BuyerName         string    `json:"buyerName"`
-	Status            string    `json:"status"`
-	ActivityID        int64     `json:"activityId"`
-	Remark            string    `json:"remark"`
-	CreatedAt         time.Time `json:"createdAt"`
-	UpdatedAt         time.Time `json:"updatedAt"`
+	ID                        int64     `json:"id"`
+	RequestNo                 string    `json:"requestNo"`
+	Source                    string    `json:"source"`
+	SourceProductID           int64     `json:"sourceProductId"`
+	AIProcurementID           int64     `json:"aiProcurementId"`
+	Category                  string    `json:"category"`
+	SubCategory               string    `json:"subCategory"`
+	ProductName               string    `json:"productName"`
+	Material                  string    `json:"material"`
+	Spec                      string    `json:"spec"`
+	Quantity                  float64   `json:"quantity"`
+	Unit                      string    `json:"unit"`
+	TargetPrice               float64   `json:"targetPrice"`
+	ContactName               string    `json:"contactName"`
+	ContactPhone              string    `json:"contactPhone"`
+	DeliveryAddressSource     string    `json:"deliveryAddressSource"`
+	DestWarehouseServiceID    int64     `json:"destWarehouseServiceId"`
+	DestWarehouseEnterpriseID int64     `json:"destWarehouseEnterpriseId"`
+	DestWarehouseName         string    `json:"destWarehouseName"`
+	DestWarehouseProvince     string    `json:"destWarehouseProvince"`
+	DestWarehouseCity         string    `json:"destWarehouseCity"`
+	DestWarehouseDistrict     string    `json:"destWarehouseDistrict"`
+	DestWarehouseAddress      string    `json:"destWarehouseAddress"`
+	DeliveryAddress           string    `json:"deliveryAddress"`
+	DeliveryMethod            string    `json:"deliveryMethod"`
+	PaymentMethod             string    `json:"paymentMethod"`
+	DeliveryNote              string    `json:"deliveryNote"`
+	BuyerEnterpriseID         int64     `json:"buyerEnterpriseId"`
+	BuyerUserID               int64     `json:"buyerUserId"`
+	BuyerName                 string    `json:"buyerName"`
+	Status                    string    `json:"status"`
+	ActivityID                int64     `json:"activityId"`
+	Remark                    string    `json:"remark"`
+	CreatedAt                 time.Time `json:"createdAt"`
+	UpdatedAt                 time.Time `json:"updatedAt"`
 }
 
 type createGroupProcurementRequest struct {
 	RequestID      int64   `json:"requestId"`
+	RequestIDs     []int64 `json:"requestIds"`
 	ProductID      int64   `json:"productId" binding:"required"`
 	Title          string  `json:"title"`
 	TargetQuantity float64 `json:"targetQuantity"`
@@ -289,21 +309,31 @@ func CreateGroupProcurement(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误: " + err.Error()})
 		return
 	}
+	requestIDs := uniquePositiveIDs(req.RequestIDs)
+	if req.RequestID > 0 {
+		requestIDs = uniquePositiveIDs(append(requestIDs, req.RequestID))
+	}
+	sourceRequests := make([]groupProcurementRequestItem, 0)
 	var sourceRequest groupProcurementRequestItem
 	var err error
-	if req.RequestID > 0 {
-		sourceRequest, err = getGroupProcurementRequestByID(ctx, db, req.RequestID)
+	if len(requestIDs) > 0 {
+		sourceRequests, err = listGroupProcurementRequestsByIDs(ctx, db, requestIDs)
 		if err != nil {
-			if err == sql.ErrNoRows {
-				c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "集采申请不存在"})
-				return
-			}
 			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 			return
 		}
-		if sourceRequest.Status != "pending" {
-			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "该集采申请已处理"})
+		if len(sourceRequests) != len(requestIDs) {
+			c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "部分集采申请不存在"})
 			return
+		}
+		for _, item := range sourceRequests {
+			if item.Status != "pending" {
+				c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "存在已处理的集采申请"})
+				return
+			}
+		}
+		if len(sourceRequests) > 0 {
+			sourceRequest = sourceRequests[0]
 		}
 	}
 	product, err := getGroupProductSnapshot(ctx, db, req.ProductID)
@@ -329,8 +359,10 @@ func CreateGroupProcurement(c *gin.Context) {
 		}
 	}
 	targetQuantity := req.TargetQuantity
-	if targetQuantity <= 0 && sourceRequest.ID > 0 {
-		targetQuantity = sourceRequest.Quantity
+	if targetQuantity <= 0 && len(sourceRequests) > 0 {
+		for _, item := range sourceRequests {
+			targetQuantity += item.Quantity
+		}
 	}
 	if targetQuantity <= 0 {
 		targetQuantity = product.MinOrderQty
@@ -346,11 +378,11 @@ func CreateGroupProcurement(c *gin.Context) {
 	now := time.Now()
 	openDate := now.Add(time.Duration(durationHours) * time.Hour).Format("2006-01-02")
 	adminRemark := strings.TrimSpace(req.AdminRemark)
-	if adminRemark == "" && sourceRequest.ID > 0 {
-		adminRemark = strings.TrimSpace(sourceRequest.Remark)
+	if adminRemark == "" && len(sourceRequests) > 0 {
+		adminRemark = strings.TrimSpace(sourceRequests[0].Remark)
 	}
 	source := "admin"
-	if sourceRequest.ID > 0 {
+	if len(sourceRequests) > 0 {
 		source = firstNonEmpty(sourceRequest.Source, "manual") + "_request"
 	}
 	tx, err := db.BeginTx(ctx, nil)
@@ -387,14 +419,27 @@ func CreateGroupProcurement(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 		return
 	}
-	if sourceRequest.ID > 0 {
-		result, err := tx.ExecContext(ctx, `UPDATE procurement_requests SET status = 'accepted', activity_id = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL AND status = 'pending'`, id, now, sourceRequest.ID)
+	for _, item := range sourceRequests {
+		if _, err := tx.ExecContext(ctx, `INSERT IGNORE INTO procurement_activity_requests (activity_id, request_id, created_at) VALUES (?, ?, ?)`, id, item.ID, now); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+			return
+		}
+		invitationNo := generateAdminProcurementInvitationNo()
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO procurement_invitations
+			(invitation_no, activity_id, request_id, buyer_enterprise_id, buyer_user_id, buyer_name, status, expires_at, remark, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, 'pending', NULL, ?, ?, ?)`,
+			invitationNo, id, item.ID, item.BuyerEnterpriseID, item.BuyerUserID, item.BuyerName, strings.TrimSpace(item.Remark), now, now); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+			return
+		}
+		result, err := tx.ExecContext(ctx, `UPDATE procurement_requests SET status = 'invited', activity_id = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL AND status = 'pending'`, id, now, item.ID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 			return
 		}
 		if affected, err := result.RowsAffected(); err == nil && affected == 0 {
-			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "该集采申请已处理"})
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "存在已处理的集采申请"})
 			return
 		}
 	}
@@ -551,8 +596,13 @@ func ListGroupProcurementRequests(c *gin.Context) {
 		return
 	}
 	rows, err := db.QueryContext(ctx, `
-		SELECT id, COALESCE(request_no,''), COALESCE(source,''), COALESCE(category,''), COALESCE(product_name,''), COALESCE(quantity,0), COALESCE(unit,'吨'),
-		       COALESCE(delivery_address,''), COALESCE(buyer_enterprise_id,0), COALESCE(buyer_user_id,0), COALESCE(buyer_name,''), COALESCE(status,'pending'),
+		SELECT id, COALESCE(request_no,''), COALESCE(source,''), COALESCE(source_product_id,0), COALESCE(ai_procurement_id,0),
+		       COALESCE(category,''), COALESCE(sub_category,''), COALESCE(product_name,''), COALESCE(material,''), COALESCE(spec,''),
+		       COALESCE(quantity,0), COALESCE(unit,'吨'), COALESCE(target_price,0), COALESCE(contact_name,''), COALESCE(contact_phone,''),
+		       COALESCE(delivery_address_source,''), COALESCE(dest_warehouse_service_id,0), COALESCE(dest_warehouse_enterprise_id,0),
+		       COALESCE(dest_warehouse_name,''), COALESCE(dest_warehouse_province,''), COALESCE(dest_warehouse_city,''), COALESCE(dest_warehouse_district,''), COALESCE(dest_warehouse_address,''),
+		       COALESCE(delivery_address,''), COALESCE(delivery_method,''), COALESCE(payment_method,''), COALESCE(delivery_note,''),
+		       COALESCE(buyer_enterprise_id,0), COALESCE(buyer_user_id,0), COALESCE(buyer_name,''), COALESCE(status,'pending'),
 		       COALESCE(activity_id,0), COALESCE(remark,''), created_at, updated_at
 		FROM procurement_requests WHERE `+where+` ORDER BY id DESC LIMIT ? OFFSET ?`, append(args, limit, offset)...)
 	if err != nil {
@@ -563,7 +613,7 @@ func ListGroupProcurementRequests(c *gin.Context) {
 	items := make([]groupProcurementRequestItem, 0)
 	for rows.Next() {
 		var item groupProcurementRequestItem
-		if err := rows.Scan(&item.ID, &item.RequestNo, &item.Source, &item.Category, &item.ProductName, &item.Quantity, &item.Unit, &item.DeliveryAddress, &item.BuyerEnterpriseID, &item.BuyerUserID, &item.BuyerName, &item.Status, &item.ActivityID, &item.Remark, &item.CreatedAt, &item.UpdatedAt); err != nil {
+		if err := scanGroupProcurementRequest(rows, &item); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 			return
 		}
@@ -746,15 +796,64 @@ func getGroupProcurementByID(ctx context.Context, db *sql.DB, id int64) (groupPr
 
 func getGroupProcurementRequestByID(ctx context.Context, db *sql.DB, id int64) (groupProcurementRequestItem, error) {
 	var item groupProcurementRequestItem
-	err := db.QueryRowContext(ctx, `
-		SELECT id, COALESCE(request_no,''), COALESCE(source,''), COALESCE(category,''), COALESCE(product_name,''), COALESCE(quantity,0), COALESCE(unit,'吨'),
-		       COALESCE(delivery_address,''), COALESCE(buyer_enterprise_id,0), COALESCE(buyer_user_id,0), COALESCE(buyer_name,''), COALESCE(status,'pending'),
-		       COALESCE(activity_id,0), COALESCE(remark,''), created_at, updated_at
-		FROM procurement_requests
-		WHERE deleted_at IS NULL AND id = ?
-		LIMIT 1`, id).
-		Scan(&item.ID, &item.RequestNo, &item.Source, &item.Category, &item.ProductName, &item.Quantity, &item.Unit, &item.DeliveryAddress, &item.BuyerEnterpriseID, &item.BuyerUserID, &item.BuyerName, &item.Status, &item.ActivityID, &item.Remark, &item.CreatedAt, &item.UpdatedAt)
+	err := scanGroupProcurementRequest(db.QueryRowContext(ctx, groupProcurementRequestSelectSQL("WHERE deleted_at IS NULL AND id = ? LIMIT 1"), id), &item)
 	return item, err
+}
+
+func listGroupProcurementRequestsByIDs(ctx context.Context, db *sql.DB, ids []int64) ([]groupProcurementRequestItem, error) {
+	ids = uniquePositiveIDs(ids)
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	placeholders := make([]string, 0, len(ids))
+	args := make([]any, 0, len(ids))
+	for _, id := range ids {
+		placeholders = append(placeholders, "?")
+		args = append(args, id)
+	}
+	rows, err := db.QueryContext(ctx, groupProcurementRequestSelectSQL("WHERE deleted_at IS NULL AND id IN ("+strings.Join(placeholders, ",")+")"), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]groupProcurementRequestItem, 0, len(ids))
+	for rows.Next() {
+		var item groupProcurementRequestItem
+		if err := scanGroupProcurementRequest(rows, &item); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+func groupProcurementRequestSelectSQL(tail string) string {
+	return `
+		SELECT id, COALESCE(request_no,''), COALESCE(source,''), COALESCE(source_product_id,0), COALESCE(ai_procurement_id,0),
+		       COALESCE(category,''), COALESCE(sub_category,''), COALESCE(product_name,''), COALESCE(material,''), COALESCE(spec,''),
+		       COALESCE(quantity,0), COALESCE(unit,'吨'), COALESCE(target_price,0), COALESCE(contact_name,''), COALESCE(contact_phone,''),
+		       COALESCE(delivery_address_source,''), COALESCE(dest_warehouse_service_id,0), COALESCE(dest_warehouse_enterprise_id,0),
+		       COALESCE(dest_warehouse_name,''), COALESCE(dest_warehouse_province,''), COALESCE(dest_warehouse_city,''), COALESCE(dest_warehouse_district,''), COALESCE(dest_warehouse_address,''),
+		       COALESCE(delivery_address,''), COALESCE(delivery_method,''), COALESCE(payment_method,''), COALESCE(delivery_note,''),
+		       COALESCE(buyer_enterprise_id,0), COALESCE(buyer_user_id,0), COALESCE(buyer_name,''), COALESCE(status,'pending'),
+		       COALESCE(activity_id,0), COALESCE(remark,''), created_at, updated_at
+		FROM procurement_requests ` + tail
+}
+
+func scanGroupProcurementRequest(scanner sqlScanner, item *groupProcurementRequestItem) error {
+	return scanner.Scan(
+		&item.ID, &item.RequestNo, &item.Source, &item.SourceProductID, &item.AIProcurementID,
+		&item.Category, &item.SubCategory, &item.ProductName, &item.Material, &item.Spec,
+		&item.Quantity, &item.Unit, &item.TargetPrice, &item.ContactName, &item.ContactPhone,
+		&item.DeliveryAddressSource, &item.DestWarehouseServiceID, &item.DestWarehouseEnterpriseID,
+		&item.DestWarehouseName, &item.DestWarehouseProvince, &item.DestWarehouseCity, &item.DestWarehouseDistrict, &item.DestWarehouseAddress,
+		&item.DeliveryAddress, &item.DeliveryMethod, &item.PaymentMethod, &item.DeliveryNote,
+		&item.BuyerEnterpriseID, &item.BuyerUserID, &item.BuyerName, &item.Status,
+		&item.ActivityID, &item.Remark, &item.CreatedAt, &item.UpdatedAt,
+	)
 }
 
 func listGroupParticipants(ctx context.Context, db *sql.DB, activityID int64) ([]groupParticipantItem, error) {
@@ -1072,17 +1171,61 @@ func ensureGroupProcurementSchema(ctx context.Context, db *sql.DB) error {
 			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
 			request_no VARCHAR(40) UNIQUE,
 			source VARCHAR(40),
+			source_product_id BIGINT UNSIGNED DEFAULT 0,
+			ai_procurement_id BIGINT UNSIGNED DEFAULT 0,
 			category VARCHAR(80),
+			sub_category VARCHAR(80),
 			product_name VARCHAR(200),
+			material VARCHAR(120),
+			spec VARCHAR(200),
 			quantity DECIMAL(14,2) DEFAULT 0,
 			unit VARCHAR(20) DEFAULT '吨',
+			target_price DECIMAL(16,2) DEFAULT 0,
+			contact_name VARCHAR(80),
+			contact_phone VARCHAR(40),
+			delivery_address_source VARCHAR(32),
+			dest_warehouse_service_id BIGINT UNSIGNED DEFAULT 0,
+			dest_warehouse_enterprise_id BIGINT UNSIGNED DEFAULT 0,
+			dest_warehouse_name VARCHAR(200),
+			dest_warehouse_province VARCHAR(80),
+			dest_warehouse_city VARCHAR(80),
+			dest_warehouse_district VARCHAR(80),
+			dest_warehouse_address VARCHAR(500),
 			delivery_address VARCHAR(500),
+			delivery_method VARCHAR(60),
+			payment_method VARCHAR(60),
+			delivery_note VARCHAR(500),
 			buyer_enterprise_id BIGINT UNSIGNED DEFAULT 0,
 			buyer_user_id BIGINT UNSIGNED DEFAULT 0,
 			buyer_name VARCHAR(200),
 			status VARCHAR(32) DEFAULT 'pending',
 			activity_id BIGINT UNSIGNED DEFAULT 0,
 			remark VARCHAR(500),
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			deleted_at DATETIME NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS procurement_activity_requests (
+			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+			activity_id BIGINT UNSIGNED NOT NULL,
+			request_id BIGINT UNSIGNED NOT NULL,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE KEY idx_procurement_activity_request (activity_id, request_id)
+		)`,
+		`CREATE TABLE IF NOT EXISTS procurement_invitations (
+			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+			invitation_no VARCHAR(40) UNIQUE,
+			activity_id BIGINT UNSIGNED DEFAULT 0,
+			request_id BIGINT UNSIGNED DEFAULT 0,
+			buyer_enterprise_id BIGINT UNSIGNED DEFAULT 0,
+			buyer_user_id BIGINT UNSIGNED DEFAULT 0,
+			buyer_name VARCHAR(200),
+			status VARCHAR(32) DEFAULT 'pending',
+			participant_id BIGINT UNSIGNED DEFAULT 0,
+			remark VARCHAR(500),
+			expires_at DATETIME NULL,
+			accepted_at DATETIME NULL,
+			declined_at DATETIME NULL,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 			deleted_at DATETIME NULL
@@ -1141,6 +1284,34 @@ func ensureGroupProcurementSchema(ctx context.Context, db *sql.DB) error {
 			}
 		}
 	}
+	requestColumns := map[string]string{
+		"source_product_id":            "BIGINT UNSIGNED DEFAULT 0",
+		"ai_procurement_id":            "BIGINT UNSIGNED DEFAULT 0",
+		"sub_category":                 "VARCHAR(80)",
+		"material":                     "VARCHAR(120)",
+		"spec":                         "VARCHAR(200)",
+		"target_price":                 "DECIMAL(16,2) DEFAULT 0",
+		"contact_name":                 "VARCHAR(80)",
+		"contact_phone":                "VARCHAR(40)",
+		"delivery_address_source":      "VARCHAR(32)",
+		"dest_warehouse_service_id":    "BIGINT UNSIGNED DEFAULT 0",
+		"dest_warehouse_enterprise_id": "BIGINT UNSIGNED DEFAULT 0",
+		"dest_warehouse_name":          "VARCHAR(200)",
+		"dest_warehouse_province":      "VARCHAR(80)",
+		"dest_warehouse_city":          "VARCHAR(80)",
+		"dest_warehouse_district":      "VARCHAR(80)",
+		"dest_warehouse_address":       "VARCHAR(500)",
+		"delivery_method":              "VARCHAR(60)",
+		"payment_method":               "VARCHAR(60)",
+		"delivery_note":                "VARCHAR(500)",
+	}
+	for name, definition := range requestColumns {
+		if !columnExists(ctx, db, "procurement_requests", name) {
+			if _, err := db.ExecContext(ctx, fmt.Sprintf("ALTER TABLE procurement_requests ADD COLUMN %s %s", name, definition)); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
 
@@ -1148,8 +1319,28 @@ func generateAdminProcurementNo() string {
 	return "GP" + time.Now().Format("20060102150405") + randomNumeric(4)
 }
 
+func generateAdminProcurementInvitationNo() string {
+	return "GPI" + time.Now().Format("20060102150405") + randomNumeric(4)
+}
+
 func generateAdminOrderNo() string {
 	return "O" + time.Now().Format("20060102150405") + randomNumeric(4)
+}
+
+func uniquePositiveIDs(ids []int64) []int64 {
+	seen := make(map[int64]struct{}, len(ids))
+	result := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		result = append(result, id)
+	}
+	return result
 }
 
 func randomNumeric(length int) string {
