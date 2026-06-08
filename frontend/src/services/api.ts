@@ -515,6 +515,88 @@ export interface GroupProcurementRequestItem {
   updatedAt: string
 }
 
+export interface GroupProcurementProjectSellerItem {
+  id: number
+  projectId: number
+  sellerEnterpriseId: number
+  sellerUserId: number
+  sellerName: string
+  productId: number
+  productNo: string
+  productName: string
+  status: string
+  remark?: string
+  reviewedBy?: number
+  reviewedAt?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface GroupProcurementProjectQuoteItem {
+  id: number
+  projectId: number
+  enrollmentId: number
+  sellerEnterpriseId: number
+  sellerUserId: number
+  sellerName: string
+  productId: number
+  productNo: string
+  productName: string
+  unitPrice: number
+  supplyQuantity: number
+  unit: string
+  deliveryDays: number
+  deliveryWarehouse?: string
+  taxIncluded: boolean
+  taxRate?: number
+  paymentTerms?: string
+  remark?: string
+  isLatest: boolean
+  status: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface GroupProcurementProjectItem {
+  id: number
+  projectNo: string
+  title: string
+  status: string
+  category: string
+  subCategory?: string
+  productName: string
+  material?: string
+  spec?: string
+  targetQuantity: number
+  demandQuantity: number
+  unit: string
+  targetPrice: number
+  deliveryAddress?: string
+  buyerRequestCount: number
+  buyerEnterpriseCount: number
+  invitedSupplierCount: number
+  quotedSupplierCount: number
+  quoteDeadline?: string
+  awardedAt?: string
+  orderedAt?: string
+  awardQuoteId?: number
+  awardSupplierId?: number
+  awardSupplierName?: string
+  awardProductId?: number
+  awardProductNo?: string
+  awardProductName?: string
+  awardUnitPrice?: number
+  awardDeliveryDays?: number
+  orderId?: number
+  orderNo?: string
+  adminRemark?: string
+  requests?: GroupProcurementRequestItem[]
+  enrollments?: GroupProcurementProjectSellerItem[]
+  quotes?: GroupProcurementProjectQuoteItem[]
+  createdAt: string
+  updatedAt: string
+}
+
 export type GroupProcurementPageParams = Omit<PageParams, 'status'> & {
   status?: string
   category?: string
@@ -534,6 +616,20 @@ export const groupProcurementApi = {
   listRequests: (params: GroupProcurementRequestPageParams) =>
     get<PageResult<GroupProcurementRequestItem>>('/group-procurement-requests', { params: { ...params, page_size: params.pageSize } }),
   rejectRequest: (id: number, data?: { remark?: string }) => post<GroupProcurementRequestItem>(`/group-procurement-requests/${id}/reject`, data || {}),
+}
+
+export const groupProcurementProjectApi = {
+  list: (params: GroupProcurementPageParams) =>
+    get<PageResult<GroupProcurementProjectItem>>('/group-procurement-projects', { params: { ...params, page_size: params.pageSize } }),
+  get: (id: number) => get<GroupProcurementProjectItem>(`/group-procurement-projects/${id}`),
+  create: (data: { requestIds: number[]; title?: string; targetQuantity?: number; durationHours?: number; adminRemark?: string }) =>
+    post<GroupProcurementProjectItem>('/group-procurement-projects', data),
+  inviteSellers: (id: number, data: { productIds: number[] }) =>
+    post<GroupProcurementProjectItem>(`/group-procurement-projects/${id}/invitations`, data),
+  award: (id: number, data: { quoteId: number; remark?: string }) =>
+    post<GroupProcurementProjectItem>(`/group-procurement-projects/${id}/award`, data),
+  createOrder: (id: number, data?: { remark?: string }) =>
+    post<GroupProcurementProjectItem>(`/group-procurement-projects/${id}/order`, data || {}),
 }
 
 export interface ServiceOfferItem {
