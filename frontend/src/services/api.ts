@@ -439,48 +439,6 @@ export interface GroupParticipantItem {
   updatedAt: string
 }
 
-export interface GroupProcurementItem {
-  id: number
-  procurementNo: string
-  title: string
-  leaderName: string
-  status: string
-  productId: number
-  productNo: string
-  productName: string
-  sellerEnterpriseId: number
-  sellerName: string
-  groupPrice: number
-  minGroupQuantity: number
-  maxGroupQuantity: number
-  category: string
-  target: string
-  targetQuantity: number
-  unit: string
-  budgetMin: number
-  budgetMax: number
-  budgetDisplay: string
-  stage: string
-  progress: number
-  participatingCount: number
-  demandQuantity: number
-  deliveryDays: number
-  adminRemark?: string
-  sellerRemark?: string
-  source?: string
-  startedAt?: string
-  endedAt?: string
-  sellerRespondedAt?: string
-  closedAt?: string
-  masterOrderId: number
-  masterOrderNo: string
-  masterOrderStatus: number
-  masterOrderUpdatedAt?: string
-  participants?: GroupParticipantItem[]
-  createdAt: string
-  updatedAt: string
-}
-
 export interface GroupProcurementRequestItem {
   id: number
   requestNo: string
@@ -606,13 +564,7 @@ export type GroupProcurementRequestPageParams = Omit<PageParams, 'status'> & {
   status?: string
 }
 
-export const groupProcurementApi = {
-  list: (params: GroupProcurementPageParams) =>
-    get<PageResult<GroupProcurementItem>>('/group-procurements', { params: { ...params, page_size: params.pageSize } }),
-  get: (id: number) => get<GroupProcurementItem>(`/group-procurements/${id}`),
-  create: (data: { requestId?: number; requestIds?: number[]; productId: number; title?: string; targetQuantity?: number; durationHours?: number; adminRemark?: string }) =>
-    post<GroupProcurementItem>('/group-procurements', data),
-  end: (id: number, data?: { remark?: string }) => post<GroupProcurementItem>(`/group-procurements/${id}/end`, data || {}),
+export const groupProcurementRequestApi = {
   listRequests: (params: GroupProcurementRequestPageParams) =>
     get<PageResult<GroupProcurementRequestItem>>('/group-procurement-requests', { params: { ...params, page_size: params.pageSize } }),
   rejectRequest: (id: number, data?: { remark?: string }) => post<GroupProcurementRequestItem>(`/group-procurement-requests/${id}/reject`, data || {}),

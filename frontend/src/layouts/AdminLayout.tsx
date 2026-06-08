@@ -110,7 +110,7 @@ const fallbackMenuItems: MenuProps['items'] = [
     children: [
       { key: '/product', icon: <AppstoreOutlined />, label: '商品管理' },
       { key: '/product/order', icon: <ShoppingOutlined />, label: '订单管理' },
-      { key: '/group-procurement', icon: <TeamOutlined />, label: '集采管理' },
+      { key: '/group-procurement', icon: <TeamOutlined />, label: '集采竞价' },
       { key: '/product/category', icon: <AppstoreOutlined />, label: '类目配置' },
     ],
   },
@@ -181,7 +181,7 @@ function withLocalMenus(items: ApiMenuItem[]): ApiMenuItem[] {
   const menu: ApiMenuItem = {
     id: -9001,
     parentId: productCenter?.id || 0,
-    name: '集采管理',
+    name: '集采竞价',
     path: '/group-procurement',
     icon: 'TeamOutlined',
     type: 1,
@@ -211,7 +211,7 @@ const pageMeta: Record<string, { title: string; description: string }> = {
   '/service-offers/finance': { title: '金融服务审核', description: '审核资金方上架的金融服务产品' },
   '/product': { title: '商品管理', description: '商品信息与审核管理' },
   '/product/order': { title: '订单管理', description: '交易订单与履约管理' },
-  '/group-procurement': { title: '集采管理', description: '发起商品集采、跟踪卖家响应和参团订单' },
+  '/group-procurement': { title: '集采竞价', description: '归并采购申请、邀请卖家报价、定标并生成订单' },
   '/product/category': { title: '类目配置', description: '商品类目结构管理' },
   '/ai-procurement/monitor': { title: 'AI采购运营监控', description: '查看AI采购流程状态、异常和运行配置' },
   '/ai-procurement/config': { title: 'AI采购配置', description: '配置AI采购流程、模型、商品匹配、融资与审核策略' },
