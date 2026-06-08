@@ -12,8 +12,8 @@ import {
   GroupProcurementRequestItem,
   PageParams,
   ProductItem,
-  groupProcurementApi,
   groupProcurementProjectApi,
+  groupProcurementRequestApi,
   productApi,
 } from '../../services/api'
 
@@ -84,7 +84,7 @@ export default function GroupProcurementPage() {
   })
   const { data: requestData, isLoading: requestLoading } = useQuery({
     queryKey: ['group-procurement-requests', 'pending'],
-    queryFn: () => groupProcurementApi.listRequests({ page: 1, pageSize: 20, status: 'pending' }),
+    queryFn: () => groupProcurementRequestApi.listRequests({ page: 1, pageSize: 20, status: 'pending' }),
   })
   const { data: productData, isLoading: productLoading } = useQuery({
     queryKey: ['group-procurement-invite-products', productParams],
@@ -107,7 +107,7 @@ export default function GroupProcurementPage() {
   })
 
   const rejectRequestMutation = useMutation({
-    mutationFn: ({ id }: { id: number }) => groupProcurementApi.rejectRequest(id),
+    mutationFn: ({ id }: { id: number }) => groupProcurementRequestApi.rejectRequest(id),
     onSuccess: () => {
       message.success('集采申请已驳回')
       void queryClient.invalidateQueries({ queryKey: ['group-procurement-requests'] })
@@ -304,7 +304,7 @@ export default function GroupProcurementPage() {
       </Card>
 
       <Card
-        title="待归并集采申请"
+        title="待归并采购申请"
         extra={<Button type="primary" icon={<PlusOutlined />} disabled={selectedRequestRows.length === 0} onClick={openCreateModal}>创建竞价项目</Button>}
       >
         <Table
