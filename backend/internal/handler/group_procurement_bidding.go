@@ -215,9 +215,14 @@ func CreateGroupProcurementProjectV2(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "部分集采申请不存在"})
 		return
 	}
+	primary := requests[0]
 	for _, item := range requests {
 		if item.Status != "pending" {
 			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "存在已处理的集采申请"})
+			return
+		}
+		if item.Category != primary.Category || item.SubCategory != primary.SubCategory || item.ProductName != primary.ProductName || item.Material != primary.Material || item.Spec != primary.Spec {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "所选采购申请不是同一类商品，不能归并到同一项目"})
 			return
 		}
 	}
@@ -231,7 +236,6 @@ func CreateGroupProcurementProjectV2(c *gin.Context) {
 	if durationHours <= 0 {
 		durationHours = 48
 	}
-	primary := requests[0]
 	title := strings.TrimSpace(req.Title)
 	if title == "" {
 		title = "集采竞价项目：" + primary.ProductName
@@ -354,7 +358,7 @@ func InviteGroupProcurementProjectSellers(c *gin.Context) {
 			return
 		}
 		var existingID int64
-		err = tx.QueryRowContext(ctx, `SELECT id FROM procurement_supplier_enrollments WHERE project_id = ? AND seller_enterprise_id = ? AND product_id = ? AND deleted_at IS NULL LIMIT 1`, projectID, product.SellerEnterpriseID, product.ID).Scan(&existingID)
+		err = tx.QueryRowContext(ctx, `SELECT id FROM procurement_supplier_enrollments WHERE project_id = ? AND seller_enterprise_id = ? AND deleted_at IS NULL LIMIT 1`, projectID, product.SellerEnterpriseID).Scan(&existingID)
 		if err == nil && existingID > 0 {
 			continue
 		}
@@ -439,6 +443,10 @@ func AwardGroupProcurementProject(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "中标报价不存在"})
 		return
 	}
+	if quote.SupplyQuantity < project.DemandQuantity {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "中标报价可供数量不足，无法覆盖项目总需求"})
+		return
+	}
 	now := time.Now()
 	adminID := currentAdminID(c)
 	tx, err := db.BeginTx(ctx, nil)
@@ -452,7 +460,7 @@ func AwardGroupProcurementProject(c *gin.Context) {
 			_ = tx.Rollback()
 		}
 	}()
-	if _, err := tx.ExecContext(ctx, `UPDATE procurement_supplier_quotes SET status = CASE WHEN id = ? THEN 'awarded' ELSE status END, updated_at = ? WHERE project_id = ? AND is_latest = 1 AND deleted_at IS NULL`, req.QuoteID, now, projectID); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE procurement_supplier_quotes SET status = CASE WHEN id = ? THEN 'awarded' ELSE 'submitted' END, updated_at = ? WHERE project_id = ? AND is_latest = 1 AND deleted_at IS NULL`, req.QuoteID, now, projectID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 		return
 	}
