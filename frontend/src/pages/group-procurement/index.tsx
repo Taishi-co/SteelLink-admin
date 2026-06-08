@@ -1,194 +1,109 @@
-import { useState, type Key } from 'react'
-import { Button, Card, Col, Descriptions, Drawer, Form, Input, InputNumber, Modal, Popconfirm, Row, Select, Space, Statistic, Steps, Table, Tag, Typography, message } from 'antd'
+import { useMemo, useState, type Key } from 'react'
+import { Button, Card, Col, Descriptions, Drawer, Form, Input, InputNumber, Modal, Popconfirm, Row, Space, Statistic, Table, Tag, Typography, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
+import { CheckCircleOutlined, EyeOutlined, FileDoneOutlined, PlusOutlined, ReloadOutlined, SearchOutlined, ShopOutlined, TeamOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CheckCircleOutlined, ClockCircleOutlined, EyeOutlined, FileDoneOutlined, PlusOutlined, ReloadOutlined, SearchOutlined, SendOutlined, ShopOutlined, StopOutlined, TeamOutlined } from '@ant-design/icons'
-import { groupProcurementApi, GroupParticipantItem, GroupProcurementItem, GroupProcurementPageParams, GroupProcurementRequestItem, PageParams, productApi, ProductItem } from '../../services/api'
 import { formatDateTime } from '../../utils/format'
+import {
+  GroupProcurementPageParams,
+  GroupProcurementProjectItem,
+  GroupProcurementProjectQuoteItem,
+  GroupProcurementProjectSellerItem,
+  GroupProcurementRequestItem,
+  PageParams,
+  ProductItem,
+  groupProcurementApi,
+  groupProcurementProjectApi,
+  productApi,
+} from '../../services/api'
 
 const { Text } = Typography
-
-const statusMeta: Record<string, { color: string; text: string }> = {
-  pending_seller: { color: 'gold', text: '待卖家确认' },
-  active: { color: 'green', text: '商城参团中' },
-  ended: { color: 'blue', text: '已截止' },
-  order_created: { color: 'purple', text: '已生成订单' },
-  seller_rejected: { color: 'red', text: '卖家拒绝' },
-  closed: { color: 'default', text: '已关闭' },
-}
-
-const requestStatusMeta: Record<string, { color: string; text: string }> = {
-  pending: { color: 'gold', text: '待处理' },
-  selected: { color: 'blue', text: '已选择' },
-  invited: { color: 'cyan', text: '已邀请' },
-  accepted: { color: 'green', text: '已采纳' },
-  rejected: { color: 'red', text: '已拒绝' },
-  expired: { color: 'default', text: '已过期' },
-}
-
-const participantStatusMeta: Record<string, { color: string; text: string }> = {
-  joined: { color: 'green', text: '已参团' },
-  order_created: { color: 'purple', text: '已成单' },
-  cancelled: { color: 'default', text: '已取消' },
-}
-
-const orderStatusMeta: Record<number, { color: string; text: string }> = {
-  0: { color: 'default', text: '未生成' },
-  1: { color: 'orange', text: '待确认' },
-  2: { color: 'gold', text: '待签合同' },
-  3: { color: 'blue', text: '待支付' },
-  4: { color: 'cyan', text: '已支付' },
-  5: { color: 'purple', text: '待提货' },
-  6: { color: 'processing', text: '配送中' },
-  7: { color: 'geekblue', text: '已送达' },
-  8: { color: 'green', text: '已完成' },
-  9: { color: 'red', text: '已取消' },
-  10: { color: 'volcano', text: '已冻结' },
-  11: { color: 'magenta', text: '异常' },
-  12: { color: 'purple', text: '待选目的仓' },
-  13: { color: 'purple', text: '待仓库确认' },
-  14: { color: 'orange', text: '待卖方确认' },
-  15: { color: 'blue', text: '待买方确认' },
-  16: { color: 'cyan', text: '物流竞价中' },
-  17: { color: 'gold', text: '待确认物流' },
-  18: { color: 'processing', text: '运输中' },
-  19: { color: 'green', text: '已收货' },
-  20: { color: 'success', text: '已对账' },
-  21: { color: 'default', text: '已归档' },
-  22: { color: 'purple', text: '融资审批中' },
-  23: { color: 'gold', text: '待融资合同' },
-  24: { color: 'red', text: '待重新选仓' },
-  25: { color: 'red', text: '物流无运力' },
-  26: { color: 'purple', text: '待选择仓库' },
-  27: { color: 'gold', text: '待物流合同' },
-}
-
-const statusOptions = [
-  { label: '全部状态', value: '' },
-  { label: '待卖家确认', value: 'pending_seller' },
-  { label: '商城参团中', value: 'active' },
-  { label: '已截止', value: 'ended' },
-  { label: '已生成订单', value: 'order_created' },
-  { label: '卖家拒绝', value: 'seller_rejected' },
-]
-
-const flowSteps = [
-  { title: '平台发起', icon: <SendOutlined /> },
-  { title: '卖家确认', icon: <CheckCircleOutlined /> },
-  { title: '买家参团', icon: <TeamOutlined /> },
-  { title: '管理成单', icon: <FileDoneOutlined /> },
-  { title: '订单履约', icon: <ShopOutlined /> },
-]
-
-interface GroupProcurementFilterValues {
-  keyword?: string
-  status?: string
-  category?: string
-}
-
-function statusTag(status: string) {
-  const meta = statusMeta[status] || { color: 'default', text: status || '-' }
-  return <Tag color={meta.color}>{meta.text}</Tag>
-}
-
-function participantStatusTag(status: string) {
-  const meta = participantStatusMeta[status] || { color: 'default', text: status || '-' }
-  return <Tag color={meta.color}>{meta.text}</Tag>
-}
-
-function orderStatusTag(status?: number) {
-  const meta = orderStatusMeta[Number(status || 0)] || { color: 'default', text: `状态${status}` }
-  return <Tag color={meta.color}>{meta.text}</Tag>
-}
-
-function money(value: number) {
-  return `¥${Number(value || 0).toLocaleString()}`
-}
-
-function quantity(value: number, unit?: string) {
-  return `${Number(value || 0).toLocaleString()} ${unit || '吨'}`
-}
-
-function stockQuantity(value: number) {
-  return quantity(value, '吨')
-}
-
-function availableStock(product?: ProductItem) {
-  return product?.availableQty ?? product?.stock ?? 0
-}
-
-function deliveryMethodText(value?: string) {
-  if (value === 'self') return '自行安排物流'
-  if (value === 'platform_logistics') return '平台物流'
-  return value || '-'
-}
-
-function paymentMethodText(value?: string) {
-  if (value === 'offline') return '线下转账'
-  if (value === 'online') return '平台线上支付'
-  return value || '-'
-}
-
-function procurementStep(status?: string) {
-  if (status === 'pending_seller' || status === 'seller_rejected') return 1
-  if (status === 'active' || status === 'ended') return 2
-  if (status === 'order_created') return 4
-  return 0
-}
 
 function getErrorMessage(error: unknown, fallback: string) {
   const maybe = error as { response?: { data?: { message?: string } }; message?: string }
   return maybe.response?.data?.message || maybe.message || fallback
 }
 
+function money(value?: number) {
+  return `¥${Number(value || 0).toLocaleString()}`
+}
+
+function quantity(value?: number, unit?: string) {
+  return `${Number(value || 0).toLocaleString()} ${unit || '吨'}`
+}
+
+function projectStatusTag(status?: string) {
+  const map: Record<string, { color: string; text: string }> = {
+    collecting: { color: 'gold', text: '需求归集' },
+    quoting: { color: 'blue', text: '报价中' },
+    awarded: { color: 'green', text: '已定标' },
+    order_created: { color: 'purple', text: '已成单' },
+    closed: { color: 'default', text: '已关闭' },
+  }
+  const meta = map[status || ''] || { color: 'default', text: status || '-' }
+  return <Tag color={meta.color}>{meta.text}</Tag>
+}
+
+function enrollmentStatusTag(status?: string) {
+  const map: Record<string, { color: string; text: string }> = {
+    invited: { color: 'gold', text: '已邀请' },
+    approved: { color: 'green', text: '已参与' },
+    rejected: { color: 'red', text: '已拒绝' },
+  }
+  const meta = map[status || ''] || { color: 'default', text: status || '-' }
+  return <Tag color={meta.color}>{meta.text}</Tag>
+}
+
+interface FilterValues {
+  keyword?: string
+  status?: string
+  category?: string
+}
+
 export default function GroupProcurementPage() {
   const queryClient = useQueryClient()
-  const [filterForm] = Form.useForm<GroupProcurementFilterValues>()
+  const [filterForm] = Form.useForm<FilterValues>()
+  const [createForm] = Form.useForm<{ requestIds?: number[]; title?: string; targetQuantity?: number; durationHours?: number; adminRemark?: string }>()
   const [params, setParams] = useState<GroupProcurementPageParams>({ page: 1, pageSize: 10 })
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
-  const [sourceRequests, setSourceRequests] = useState<GroupProcurementRequestItem[]>([])
-  const [selectedProduct, setSelectedProduct] = useState<ProductItem | null>(null)
-  const [productKeyword, setProductKeyword] = useState('')
-  const [productParams, setProductParams] = useState<PageParams>({ page: 1, pageSize: 5, status: 2 })
+  const [inviteOpen, setInviteOpen] = useState(false)
   const [selectedRequestRowKeys, setSelectedRequestRowKeys] = useState<Key[]>([])
   const [selectedRequestRows, setSelectedRequestRows] = useState<GroupProcurementRequestItem[]>([])
-  const [createForm] = Form.useForm<{ requestIds?: number[]; productId?: number; title?: string; targetQuantity?: number; durationHours?: number; adminRemark?: string }>()
+  const [selectedProductRowKeys, setSelectedProductRowKeys] = useState<Key[]>([])
+  const [productParams, setProductParams] = useState<PageParams>({ page: 1, pageSize: 8, status: 2 })
 
   const { data, isLoading } = useQuery({
-    queryKey: ['group-procurements', params],
-    queryFn: () => groupProcurementApi.list(params),
+    queryKey: ['group-procurement-projects', params],
+    queryFn: () => groupProcurementProjectApi.list(params),
   })
   const { data: detailData, isFetching: detailLoading } = useQuery({
-    queryKey: ['group-procurement-detail', selectedId],
-    queryFn: () => groupProcurementApi.get(selectedId!),
+    queryKey: ['group-procurement-project-detail', selectedId],
+    queryFn: () => groupProcurementProjectApi.get(selectedId!),
     enabled: selectedId !== null,
   })
   const { data: requestData, isLoading: requestLoading } = useQuery({
-    queryKey: ['group-procurement-requests'],
-    queryFn: () => groupProcurementApi.listRequests({ page: 1, pageSize: 8, status: 'pending' }),
+    queryKey: ['group-procurement-requests', 'pending'],
+    queryFn: () => groupProcurementApi.listRequests({ page: 1, pageSize: 20, status: 'pending' }),
   })
   const { data: productData, isLoading: productLoading } = useQuery({
-    queryKey: ['group-procurement-products', productParams],
+    queryKey: ['group-procurement-invite-products', productParams],
     queryFn: () => productApi.list(productParams),
-    enabled: createOpen,
+    enabled: inviteOpen,
   })
 
   const createMutation = useMutation({
-    mutationFn: groupProcurementApi.create,
+    mutationFn: groupProcurementProjectApi.create,
     onSuccess: () => {
-      message.success('集采申请已发送给卖家')
+      message.success('竞价项目已创建')
       setCreateOpen(false)
-      setSourceRequests([])
       setSelectedRequestRowKeys([])
       setSelectedRequestRows([])
-      setSelectedProduct(null)
-      setProductKeyword('')
       createForm.resetFields()
-      void queryClient.invalidateQueries({ queryKey: ['group-procurements'] })
+      void queryClient.invalidateQueries({ queryKey: ['group-procurement-projects'] })
       void queryClient.invalidateQueries({ queryKey: ['group-procurement-requests'] })
     },
-    onError: (error) => message.error(getErrorMessage(error, '发起集采失败')),
+    onError: (error) => message.error(getErrorMessage(error, '创建项目失败')),
   })
 
   const rejectRequestMutation = useMutation({
@@ -197,236 +112,175 @@ export default function GroupProcurementPage() {
       message.success('集采申请已驳回')
       void queryClient.invalidateQueries({ queryKey: ['group-procurement-requests'] })
     },
-    onError: (error) => message.error(getErrorMessage(error, '驳回集采申请失败')),
+    onError: (error) => message.error(getErrorMessage(error, '驳回申请失败')),
   })
 
-  const endMutation = useMutation({
-    mutationFn: ({ id }: { id: number }) => groupProcurementApi.end(id),
+  const inviteMutation = useMutation({
+    mutationFn: ({ id, productIds }: { id: number; productIds: number[] }) => groupProcurementProjectApi.inviteSellers(id, { productIds }),
     onSuccess: () => {
-      message.success('集采已结束并生成订单')
-      void queryClient.invalidateQueries({ queryKey: ['group-procurements'] })
-      if (selectedId) void queryClient.invalidateQueries({ queryKey: ['group-procurement-detail', selectedId] })
+      message.success('卖家邀请已发送')
+      setInviteOpen(false)
+      setSelectedProductRowKeys([])
+      void queryClient.invalidateQueries({ queryKey: ['group-procurement-projects'] })
+      if (selectedId) void queryClient.invalidateQueries({ queryKey: ['group-procurement-project-detail', selectedId] })
     },
-    onError: (error) => message.error(getErrorMessage(error, '结束集采失败')),
+    onError: (error) => message.error(getErrorMessage(error, '邀请卖家失败')),
+  })
+
+  const awardMutation = useMutation({
+    mutationFn: ({ id, quoteId }: { id: number; quoteId: number }) => groupProcurementProjectApi.award(id, { quoteId }),
+    onSuccess: () => {
+      message.success('项目已定标')
+      void queryClient.invalidateQueries({ queryKey: ['group-procurement-projects'] })
+      if (selectedId) void queryClient.invalidateQueries({ queryKey: ['group-procurement-project-detail', selectedId] })
+    },
+    onError: (error) => message.error(getErrorMessage(error, '项目定标失败')),
+  })
+
+  const createOrderMutation = useMutation({
+    mutationFn: ({ id }: { id: number }) => groupProcurementProjectApi.createOrder(id),
+    onSuccess: () => {
+      message.success('已基于中标报价生成订单')
+      void queryClient.invalidateQueries({ queryKey: ['group-procurement-projects'] })
+      if (selectedId) void queryClient.invalidateQueries({ queryKey: ['group-procurement-project-detail', selectedId] })
+    },
+    onError: (error) => message.error(getErrorMessage(error, '生成订单失败')),
   })
 
   const rows = data?.data.data.list ?? []
   const detail = detailData?.data.data
   const requests = requestData?.data.data.list ?? []
   const products = productData?.data.data.list ?? []
-  const activeCount = rows.filter((item) => item.status === 'active').length
-  const pendingSellerCount = rows.filter((item) => item.status === 'pending_seller').length
-  const orderedCount = rows.filter((item) => item.status === 'order_created').length
-  const demandQuantity = rows.reduce((sum, item) => sum + Number(item.demandQuantity || 0), 0)
 
-  const openCreateModal = (requestsForCreate: GroupProcurementRequestItem[] = []) => {
-    const primaryRequest = requestsForCreate[0]
-    const totalQuantity = requestsForCreate.reduce((sum, item) => sum + Number(item.quantity || 0), 0)
-    const nextParams: PageParams = {
-      page: 1,
-      pageSize: 5,
-      status: 2,
-      keyword: primaryRequest ? primaryRequest.productName || primaryRequest.category : undefined,
-    }
-    setProductParams(nextParams)
-    setProductKeyword(nextParams.keyword || '')
-    setSourceRequests(requestsForCreate)
-    setSelectedProduct(null)
-    createForm.setFieldsValue({
-      requestIds: requestsForCreate.map((item) => item.id),
-      productId: undefined,
-      title: primaryRequest ? `平台集采：${primaryRequest.productName}` : undefined,
-      targetQuantity: totalQuantity || undefined,
-      durationHours: 24,
-      adminRemark: requestsForCreate.map((item) => item.remark).filter(Boolean).join('\n'),
-    })
-    setCreateOpen(true)
-  }
+  const stats = useMemo(() => ({
+    collecting: rows.filter((item) => item.status === 'collecting').length,
+    quoting: rows.filter((item) => item.status === 'quoting').length,
+    awarded: rows.filter((item) => item.status === 'awarded').length,
+    demand: rows.reduce((sum, item) => sum + Number(item.demandQuantity || 0), 0),
+  }), [rows])
 
-  const closeCreateModal = () => {
-    setCreateOpen(false)
-    setSourceRequests([])
-    setSelectedProduct(null)
-    setProductKeyword('')
-    createForm.resetFields()
-  }
-
-  const selectProduct = (product: ProductItem) => {
-    setSelectedProduct(product)
-    createForm.setFieldsValue({
-      productId: product.id,
-      title: createForm.getFieldValue('title') || `平台集采：${product.name}`,
-      targetQuantity: createForm.getFieldValue('targetQuantity') || product.minOrderQty || 1,
-    })
-  }
-
-  const columns: ColumnsType<GroupProcurementItem> = [
-    { title: '编号', dataIndex: 'procurementNo', width: 180 },
-    { title: '标题', dataIndex: 'title', width: 260, render: (value, row) => <div><Text strong>{value}</Text><div><Text type="secondary">{row.stage || '-'}</Text></div></div> },
-    { title: '商品', key: 'product', width: 220, render: (_, row) => <div><div>{row.productName}</div><Text type="secondary">#{row.productId} {row.productNo}</Text></div> },
-    { title: '卖家', dataIndex: 'sellerName', width: 180 },
-    { title: '状态', dataIndex: 'status', width: 130, render: statusTag },
-    { title: '集采价', dataIndex: 'groupPrice', width: 120, render: money },
-    { title: '参团', key: 'join', width: 140, render: (_, row) => `${row.participatingCount} 家 / ${row.demandQuantity}${row.unit || '吨'}` },
-    { title: '截止时间', dataIndex: 'endedAt', width: 170, render: formatDateTime },
+  const projectColumns: ColumnsType<GroupProcurementProjectItem> = [
+    { title: '项目编号', dataIndex: 'projectNo', width: 180 },
     {
-      title: '操作',
-      key: 'action',
-      fixed: 'right',
-      width: 160,
-      render: (_, row) => (
-        <Space>
-          <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => setSelectedId(row.id)}>详情</Button>
-          {(row.status === 'active' || row.status === 'ended') && !row.masterOrderId ? (
-            <Popconfirm title="结束集采并生成订单？" okText="确认结束" cancelText="取消" onConfirm={() => endMutation.mutate({ id: row.id })}>
-              <Button type="link" danger size="small" icon={<StopOutlined />}>结束</Button>
-            </Popconfirm>
-          ) : null}
-        </Space>
-      ),
-    },
-  ]
-
-  const participantColumns: ColumnsType<GroupParticipantItem> = [
-    { title: '买家', dataIndex: 'buyerName', width: 180 },
-    { title: '数量', key: 'quantity', width: 120, render: (_, row) => `${row.quantity}${row.unit || '吨'}` },
-    { title: '金额', dataIndex: 'totalAmount', width: 120, render: money },
-    { title: '联系人', key: 'contact', width: 160, render: (_, row) => `${row.contactName} ${row.contactPhone}` },
-    {
-      title: '收货信息',
-      key: 'delivery',
-      width: 300,
-      render: (_, row) => (
-        <Space direction="vertical" size={0}>
-          {row.destWarehouseName ? <Text>{row.destWarehouseName}</Text> : null}
-          <Text type="secondary">{row.deliveryAddress || row.destWarehouseAddress || '-'}</Text>
-          <Text type="secondary">{deliveryMethodText(row.deliveryMethod)} / {paymentMethodText(row.paymentMethod)}</Text>
-        </Space>
-      ),
-    },
-    { title: '状态', dataIndex: 'status', width: 110, render: participantStatusTag },
-    { title: '子订单', dataIndex: 'childOrderNo', width: 170, render: (value) => value || '-' },
-    { title: '订单进度', key: 'childOrderStatus', width: 140, render: (_, row) => row.childOrderId ? orderStatusTag(row.childOrderStatus) : '-' },
-    { title: '订单更新', dataIndex: 'childOrderUpdatedAt', width: 170, render: formatDateTime },
-    {
-      title: '操作',
-      key: 'action',
-      fixed: 'right',
-      width: 110,
-      render: (_, row) => row.childOrderNo ? (
-        <Button type="link" size="small" href={`/product/order?keyword=${encodeURIComponent(row.childOrderNo)}`} target="_blank">
-          查看订单
-        </Button>
-      ) : '-',
-    },
-  ]
-
-  const productColumns: ColumnsType<ProductItem> = [
-    {
-      title: '商品',
-      key: 'product',
+      title: '项目',
+      key: 'project',
       width: 260,
       render: (_, row) => (
         <div>
-          <Text strong>{row.name}</Text>
-          <div><Text type="secondary">#{row.id} {row.productNo || '-'}</Text></div>
+          <Text strong>{row.title}</Text>
+          <div><Text type="secondary">{row.productName}</Text></div>
         </div>
       ),
     },
-    { title: '卖家企业', dataIndex: 'enterpriseId', width: 100, render: (value) => value ? `#${value}` : '-' },
-    { title: '品类', key: 'category', width: 160, render: (_, row) => row.subCategory || row.category || '-' },
-    { title: '价格', dataIndex: 'price', width: 110, render: money },
-    { title: '可用库存', key: 'availableQty', width: 120, render: (_, row) => stockQuantity(availableStock(row)) },
-    { title: '最小起订', key: 'minOrderQty', width: 120, render: (_, row) => stockQuantity(row.minOrderQty || 0) },
-    { title: '仓库', key: 'warehouse', width: 180, render: (_, row) => row.warehouseName || [row.province, row.city, row.district].filter(Boolean).join('/') || '-' },
+    { title: '状态', dataIndex: 'status', width: 120, render: (_, row) => projectStatusTag(row.status) },
+    { title: '需求', key: 'demand', width: 160, render: (_, row) => quantity(row.demandQuantity, row.unit) },
+    { title: '买家', key: 'buyers', width: 120, render: (_, row) => `${row.buyerEnterpriseCount} 家 / ${row.buyerRequestCount} 单` },
+    { title: '卖家', key: 'sellers', width: 140, render: (_, row) => `${row.invitedSupplierCount} 邀请 / ${row.quotedSupplierCount} 报价` },
+    { title: '目标价', dataIndex: 'targetPrice', width: 120, render: (value) => money(value) },
+    { title: '截止时间', dataIndex: 'quoteDeadline', width: 180, render: (value) => formatDateTime(value) },
     {
       title: '操作',
       key: 'action',
-      fixed: 'right',
-      width: 90,
-      render: (_, row) => (
-        <Button type={selectedProduct?.id === row.id ? 'primary' : 'link'} size="small" onClick={() => selectProduct(row)}>
-          {selectedProduct?.id === row.id ? '已选择' : '选择'}
-        </Button>
-      ),
+      width: 120,
+      render: (_, row) => <Button type="link" icon={<EyeOutlined />} onClick={() => setSelectedId(row.id)}>详情</Button>,
     },
   ]
 
   const requestColumns: ColumnsType<GroupProcurementRequestItem> = [
     { title: '申请编号', dataIndex: 'requestNo', width: 170 },
-    { title: '来源', dataIndex: 'source', width: 100 },
+    { title: '申请企业', dataIndex: 'buyerName', width: 180 },
     { title: '品类', dataIndex: 'category', width: 120 },
     { title: '采购物品', dataIndex: 'productName', width: 180 },
-    { title: '需求量', key: 'quantity', width: 120, render: (_, row) => `${row.quantity}${row.unit || '吨'}` },
-    { title: '申请企业', dataIndex: 'buyerName', width: 180 },
-    { title: '状态', dataIndex: 'status', width: 110, render: (value) => {
-      const meta = requestStatusMeta[value] || { color: 'default', text: value }
-      return <Tag color={meta.color}>{meta.text}</Tag>
-    } },
-    { title: '提交时间', dataIndex: 'createdAt', width: 170, render: formatDateTime },
+    { title: '数量', key: 'quantity', width: 120, render: (_, row) => quantity(row.quantity, row.unit) },
+    { title: '目标价', dataIndex: 'targetPrice', width: 120, render: (value) => money(value) },
     {
       title: '操作',
       key: 'action',
-      fixed: 'right',
-      width: 180,
-      render: (_, row) => row.status === 'pending' ? (
-        <Space>
-          <Button type="link" size="small" icon={<PlusOutlined />} onClick={() => openCreateModal([row])}>采纳发起</Button>
-          <Popconfirm title="驳回该集采申请？" okText="确认驳回" cancelText="取消" onConfirm={() => rejectRequestMutation.mutate({ id: row.id })}>
-            <Button type="link" danger size="small" loading={rejectRequestMutation.isPending}>驳回</Button>
-          </Popconfirm>
-        </Space>
-      ) : row.activityId ? (
-        <Button type="link" size="small" onClick={() => setSelectedId(row.activityId)}>查看活动</Button>
+      width: 120,
+      render: (_, row) => (
+        <Popconfirm title="驳回该集采申请？" okText="确认" cancelText="取消" onConfirm={() => rejectRequestMutation.mutate({ id: row.id })}>
+          <Button type="link" danger>驳回</Button>
+        </Popconfirm>
+      ),
+    },
+  ]
+
+  const productColumns: ColumnsType<ProductItem> = [
+    { title: '商品', key: 'product', width: 220, render: (_, row) => <div><Text strong>{row.name}</Text><div><Text type="secondary">#{row.id} {row.productNo || '-'}</Text></div></div> },
+    { title: '卖家企业', key: 'seller', width: 140, render: (_, row) => row.enterpriseId ? `#${row.enterpriseId}` : '-' },
+    { title: '品类', key: 'category', width: 140, render: (_, row) => row.subCategory || row.category || '-' },
+    { title: '价格', dataIndex: 'price', width: 100, render: (value) => money(value) },
+    { title: '库存', key: 'stock', width: 100, render: (_, row) => quantity(row.availableQty || row.stock || 0, '吨') },
+  ]
+
+  const quoteColumns: ColumnsType<GroupProcurementProjectQuoteItem> = [
+    { title: '卖家', dataIndex: 'sellerName', width: 180 },
+    { title: '商品', key: 'product', width: 220, render: (_, row) => `${row.productName || '-'} ${row.productNo ? `(#${row.productNo})` : ''}` },
+    { title: '报价', dataIndex: 'unitPrice', width: 120, render: (value) => money(value) },
+    { title: '可供量', key: 'supply', width: 120, render: (_, row) => quantity(row.supplyQuantity, row.unit) },
+    { title: '交期', key: 'deliveryDays', width: 100, render: (_, row) => `${row.deliveryDays} 天` },
+    { title: '仓库', dataIndex: 'deliveryWarehouse', width: 160, render: (value) => value || '-' },
+    { title: '付款条件', dataIndex: 'paymentTerms', width: 160, render: (value) => value || '-' },
+    {
+      title: '操作',
+      key: 'action',
+      width: 120,
+      render: (_, row) => detail?.status !== 'order_created' ? (
+        <Popconfirm title="确定将该报价定为中标？" okText="定标" cancelText="取消" onConfirm={() => selectedId && awardMutation.mutate({ id: selectedId, quoteId: row.id })}>
+          <Button type="link" disabled={detail?.status === 'order_created'}>定标</Button>
+        </Popconfirm>
       ) : '-',
     },
   ]
 
-  const applyFilters = (values: GroupProcurementFilterValues) => {
-    setParams({
-      ...params,
-      page: 1,
-      keyword: values.keyword,
-      status: values.status,
-      category: values.category,
-    })
+  const enrollmentColumns: ColumnsType<GroupProcurementProjectSellerItem> = [
+    { title: '卖家企业', dataIndex: 'sellerName', width: 180 },
+    { title: '推荐商品', key: 'product', width: 220, render: (_, row) => `${row.productName || '-'} ${row.productNo ? `(#${row.productNo})` : ''}` },
+    { title: '状态', key: 'status', width: 120, render: (_, row) => enrollmentStatusTag(row.status) },
+    { title: '备注', dataIndex: 'remark', render: (value) => value || '-' },
+  ]
+
+  const applyFilters = (values: FilterValues) => {
+    setParams({ ...params, page: 1, keyword: values.keyword, status: values.status, category: values.category })
   }
 
   const resetFilters = () => {
     filterForm.resetFields()
-    setParams({ page: 1, pageSize: params.pageSize })
+    setParams({ page: 1, pageSize: 10 })
   }
+
+  const openCreateModal = () => {
+    const totalQuantity = selectedRequestRows.reduce((sum, item) => sum + Number(item.quantity || 0), 0)
+    createForm.setFieldsValue({
+      requestIds: selectedRequestRows.map((item) => item.id),
+      title: selectedRequestRows[0] ? `集采竞价项目：${selectedRequestRows[0].productName}` : undefined,
+      targetQuantity: totalQuantity || undefined,
+      durationHours: 48,
+      adminRemark: selectedRequestRows.map((item) => item.remark).filter(Boolean).join('\n'),
+    })
+    setCreateOpen(true)
+  }
+
+  const selectedProducts = products.filter((item) => selectedProductRowKeys.includes(item.id))
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       <Row gutter={16}>
-        <Col xs={24} md={6}><Card><Statistic title="待卖家确认" value={pendingSellerCount} suffix="场" prefix={<ClockCircleOutlined />} /></Card></Col>
-        <Col xs={24} md={6}><Card><Statistic title="商城参团中" value={activeCount} suffix="场" prefix={<TeamOutlined />} /></Card></Col>
-        <Col xs={24} md={6}><Card><Statistic title="已生成订单" value={orderedCount} suffix="场" prefix={<FileDoneOutlined />} /></Card></Col>
-        <Col xs={24} md={6}><Card><Statistic title="当前页归集量" value={demandQuantity} suffix="吨" precision={2} prefix={<ShopOutlined />} /></Card></Col>
+        <Col xs={24} md={6}><Card><Statistic title="需求归集中" value={stats.collecting} suffix="个" prefix={<ReloadOutlined />} /></Card></Col>
+        <Col xs={24} md={6}><Card><Statistic title="报价中" value={stats.quoting} suffix="个" prefix={<TeamOutlined />} /></Card></Col>
+        <Col xs={24} md={6}><Card><Statistic title="已定标" value={stats.awarded} suffix="个" prefix={<CheckCircleOutlined />} /></Card></Col>
+        <Col xs={24} md={6}><Card><Statistic title="当前页归集量" value={stats.demand} suffix="吨" prefix={<ShopOutlined />} precision={2} /></Card></Col>
       </Row>
 
-      <Card title="集采管理" extra={<Button type="primary" icon={<PlusOutlined />} onClick={() => openCreateModal()}>发起集采</Button>}>
-        <Form form={filterForm} layout="vertical" onFinish={applyFilters} initialValues={params} style={{ marginBottom: 16 }}>
+      <Card title="竞价项目">
+        <Form form={filterForm} layout="vertical" onFinish={applyFilters} style={{ marginBottom: 16 }}>
           <Row gutter={12}>
-            <Col xs={24} lg={8}>
-              <Form.Item name="keyword" label="搜索">
-                <Input allowClear prefix={<SearchOutlined />} placeholder="编号 / 标题 / 商品 / 卖家" />
-              </Form.Item>
-            </Col>
-            <Col xs={12} lg={5}>
-              <Form.Item name="status" label="状态">
-                <Select allowClear placeholder="全部状态" options={statusOptions.filter((item) => item.value !== '')} />
-              </Form.Item>
-            </Col>
-            <Col xs={12} lg={5}>
-              <Form.Item name="category" label="品类">
-                <Input allowClear placeholder="如 热轧板卷" />
-              </Form.Item>
-            </Col>
-            <Col xs={24} lg={6}>
+            <Col xs={24} md={8}><Form.Item name="keyword" label="搜索"><Input allowClear prefix={<SearchOutlined />} placeholder="项目编号 / 标题 / 采购物品" /></Form.Item></Col>
+            <Col xs={12} md={5}><Form.Item name="status" label="状态"><Input allowClear placeholder="collecting / quoting / awarded" /></Form.Item></Col>
+            <Col xs={12} md={5}><Form.Item name="category" label="品类"><Input allowClear placeholder="如 热轧板卷" /></Form.Item></Col>
+            <Col xs={24} md={6}>
               <Form.Item label="操作">
-                <Space wrap>
+                <Space>
                   <Button type="primary" htmlType="submit" icon={<SearchOutlined />}>查询</Button>
                   <Button icon={<ReloadOutlined />} onClick={resetFilters}>重置</Button>
                 </Space>
@@ -437,9 +291,9 @@ export default function GroupProcurementPage() {
         <Table
           rowKey="id"
           loading={isLoading}
-          columns={columns}
+          columns={projectColumns}
           dataSource={rows}
-          scroll={{ x: 1500 }}
+          scroll={{ x: 1280 }}
           pagination={{
             current: params.page,
             pageSize: params.pageSize,
@@ -450,206 +304,149 @@ export default function GroupProcurementPage() {
       </Card>
 
       <Card
-        title="待处理集采申请"
-        extra={
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            disabled={selectedRequestRows.length === 0}
-            onClick={() => openCreateModal(selectedRequestRows)}
-          >
-            关联所选申请发起集采
-          </Button>
-        }
+        title="待归并集采申请"
+        extra={<Button type="primary" icon={<PlusOutlined />} disabled={selectedRequestRows.length === 0} onClick={openCreateModal}>创建竞价项目</Button>}
       >
         <Table
           rowKey="id"
           loading={requestLoading}
           columns={requestColumns}
           dataSource={requests}
-          scroll={{ x: 1300 }}
-          pagination={false}
+          scroll={{ x: 1100 }}
           rowSelection={{
             selectedRowKeys: selectedRequestRowKeys,
-            getCheckboxProps: (record) => ({ disabled: record.status !== 'pending' }),
             onChange: (keys, rows) => {
               setSelectedRequestRowKeys(keys)
               setSelectedRequestRows(rows)
             },
           }}
+          pagination={false}
         />
       </Card>
 
-      <Drawer
-        title={`集采详情 ${detail?.procurementNo || ''}`}
-        open={selectedId !== null}
-        onClose={() => setSelectedId(null)}
-        width={980}
-      >
-        {detail ? (
-          <Space direction="vertical" size="large" style={{ width: '100%' }}>
-            <Card size="small">
-              <Steps
-                current={procurementStep(detail.status)}
-                items={flowSteps.map((item) => ({ title: item.title, icon: item.icon }))}
-              />
-            </Card>
-            <Row gutter={12}>
-              <Col span={6}><Card size="small"><Statistic title="参团企业" value={detail.participatingCount} suffix="家" /></Card></Col>
-              <Col span={6}><Card size="small"><Statistic title="归集需求" value={detail.demandQuantity} suffix={detail.unit || '吨'} precision={2} /></Card></Col>
-              <Col span={6}><Card size="small"><Statistic title="成团门槛" value={detail.minGroupQuantity} suffix={detail.unit || '吨'} precision={2} /></Card></Col>
-              <Col span={6}><Card size="small"><Statistic title="已成单子订单" value={(detail.participants || []).filter((item) => item.childOrderId > 0).length} suffix="笔" /></Card></Col>
-            </Row>
-            <Descriptions bordered column={2} size="small">
-              <Descriptions.Item label="状态">{statusTag(detail.status)}</Descriptions.Item>
-              <Descriptions.Item label="阶段">{detail.stage || '-'}</Descriptions.Item>
-              <Descriptions.Item label="商品">{detail.productName}</Descriptions.Item>
-              <Descriptions.Item label="卖家">{detail.sellerName}</Descriptions.Item>
-              <Descriptions.Item label="集采价">{money(detail.groupPrice)}</Descriptions.Item>
-              <Descriptions.Item label="最小成团量">{detail.minGroupQuantity}{detail.unit}</Descriptions.Item>
-              <Descriptions.Item label="参团需求">{detail.demandQuantity}{detail.unit}</Descriptions.Item>
-              <Descriptions.Item label="参团企业">{detail.participatingCount} 家</Descriptions.Item>
-              <Descriptions.Item label="截止时间">{formatDateTime(detail.endedAt)}</Descriptions.Item>
-              <Descriptions.Item label="母订单">{detail.masterOrderNo || '-'}</Descriptions.Item>
-              <Descriptions.Item label="母订单状态">{detail.masterOrderId ? orderStatusTag(detail.masterOrderStatus) : '-'}</Descriptions.Item>
-              <Descriptions.Item label="卖家备注" span={2}>{detail.sellerRemark || '-'}</Descriptions.Item>
-              <Descriptions.Item label="管理备注" span={2}>{detail.adminRemark || '-'}</Descriptions.Item>
-            </Descriptions>
-            {(detail.status === 'active' || detail.status === 'ended') && !detail.masterOrderId ? (
-              <Popconfirm title="结束集采并生成订单？" okText="确认结束" cancelText="取消" onConfirm={() => endMutation.mutate({ id: detail.id })}>
-                <Button danger icon={<StopOutlined />} loading={endMutation.isPending}>
-                  结束集采并生成订单
-                </Button>
-              </Popconfirm>
-            ) : null}
-            <Table
-              rowKey="id"
-              loading={detailLoading}
-              title={() => '参团买家'}
-              columns={participantColumns}
-              dataSource={detail.participants || []}
-              scroll={{ x: 1200 }}
-              pagination={false}
-            />
-          </Space>
-        ) : null}
-      </Drawer>
-
       <Modal
-        title="发起商品集采"
+        title="创建竞价项目"
         open={createOpen}
-        onCancel={closeCreateModal}
-        okText="发送给卖家"
-        width={1080}
+        onCancel={() => setCreateOpen(false)}
         confirmLoading={createMutation.isPending}
         onOk={() => {
           createForm.validateFields().then((values) => {
-            if (!values.productId) {
-              message.warning('请先从商品列表选择商品')
-              return
-            }
             createMutation.mutate({
-              requestIds: values.requestIds,
-              productId: values.productId,
+              requestIds: values.requestIds || selectedRequestRows.map((item) => item.id),
               title: values.title,
               targetQuantity: values.targetQuantity,
               durationHours: values.durationHours,
               adminRemark: values.adminRemark,
             })
-          })
+          }).catch(() => undefined)
         }}
       >
-        <Form form={createForm} layout="vertical" initialValues={{ durationHours: 24 }}>
-          <Form.Item name="requestIds" hidden><Select mode="multiple" /></Form.Item>
-          <Form.Item name="productId" hidden rules={[{ required: true, message: '请从商品列表选择商品' }]}><InputNumber /></Form.Item>
-          {sourceRequests.length > 0 ? (
-            <Card size="small" className="mb-4" title="来源集采申请">
-              <Table
-                rowKey="id"
-                size="small"
-                pagination={false}
-                dataSource={sourceRequests}
-                columns={[
-                  { title: '申请编号', dataIndex: 'requestNo', width: 170 },
-                  { title: '申请企业', dataIndex: 'buyerName', width: 180 },
-                  { title: '来源', dataIndex: 'source', width: 100 },
-                  { title: '品类', dataIndex: 'category', width: 120 },
-                  { title: '采购物品', dataIndex: 'productName', width: 180 },
-                  { title: '需求量', key: 'quantity', width: 120, render: (_, row) => quantity(row.quantity, row.unit) },
-                  { title: '收货地址', dataIndex: 'deliveryAddress', ellipsis: true },
-                ]}
-              />
-            </Card>
-          ) : null}
-
-          <Card
-            size="small"
-            title="选择卖家商品"
-            extra={
-              <Input.Search
-                allowClear
-                placeholder="搜索商品名、品类、钢厂、编号"
-                style={{ width: 280 }}
-                value={productKeyword}
-                onChange={(event) => setProductKeyword(event.target.value)}
-                onSearch={(keyword) => setProductParams({ ...productParams, page: 1, keyword: keyword.trim() || undefined })}
-              />
-            }
-            className="mb-4"
-          >
-            <Table
-              rowKey="id"
-              size="small"
-              loading={productLoading}
-              columns={productColumns}
-              dataSource={products}
-              scroll={{ x: 1200 }}
-              pagination={{
-                current: productParams.page,
-                pageSize: productParams.pageSize,
-                total: productData?.data.data.total || 0,
-                onChange: (page, pageSize) => setProductParams({ ...productParams, page, pageSize }),
-              }}
-              rowClassName={(record) => record.id === selectedProduct?.id ? 'ant-table-row-selected' : ''}
-              onRow={(record) => ({ onClick: () => selectProduct(record) })}
-            />
-          </Card>
-
-          {selectedProduct ? (
-            <Descriptions bordered size="small" column={3} className="mb-4">
-              <Descriptions.Item label="已选商品">{selectedProduct.name}</Descriptions.Item>
-              <Descriptions.Item label="商品编号">{selectedProduct.productNo || '-'}</Descriptions.Item>
-              <Descriptions.Item label="卖家企业">#{selectedProduct.enterpriseId}</Descriptions.Item>
-              <Descriptions.Item label="集采品类">{selectedProduct.subCategory || selectedProduct.category || '-'}</Descriptions.Item>
-              <Descriptions.Item label="当前价格">{money(selectedProduct.price)}</Descriptions.Item>
-              <Descriptions.Item label="可用库存">{stockQuantity(availableStock(selectedProduct))}</Descriptions.Item>
-            </Descriptions>
-          ) : null}
-
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item name="title" label="集采标题">
-                <Input placeholder="不填则按商品名称生成" />
-              </Form.Item>
-            </Col>
-            <Col span={6}>
-              <Form.Item name="targetQuantity" label="目标数量（吨）">
-                <InputNumber min={0.01} style={{ width: '100%' }} />
-              </Form.Item>
-            </Col>
-            <Col span={6}>
-              <Form.Item name="durationHours" label="默认时限（小时）" rules={[{ required: true }]}>
-                <InputNumber min={1} style={{ width: '100%' }} />
-              </Form.Item>
-            </Col>
-            <Col span={24}>
-              <Form.Item name="adminRemark" label="管理备注">
-                <Input.TextArea rows={3} />
-              </Form.Item>
-            </Col>
-          </Row>
+        <Form form={createForm} layout="vertical">
+          <Form.Item name="requestIds" hidden><Input /></Form.Item>
+          <Form.Item name="title" label="项目标题" rules={[{ required: true, message: '请输入项目标题' }]}><Input /></Form.Item>
+          <Form.Item name="targetQuantity" label="目标数量（吨）"><InputNumber min={0.01} style={{ width: '100%' }} /></Form.Item>
+          <Form.Item name="durationHours" label="报价时限（小时）" rules={[{ required: true, message: '请输入报价时限' }]}><InputNumber min={1} style={{ width: '100%' }} /></Form.Item>
+          <Form.Item name="adminRemark" label="管理备注"><Input.TextArea rows={3} /></Form.Item>
         </Form>
       </Modal>
+
+      <Modal
+        title="邀请卖家参与报价"
+        open={inviteOpen}
+        onCancel={() => setInviteOpen(false)}
+        width={1000}
+        confirmLoading={inviteMutation.isPending}
+        onOk={() => {
+          if (!selectedId || selectedProducts.length === 0) {
+            message.warning('请先选择至少一个卖家商品')
+            return
+          }
+          inviteMutation.mutate({ id: selectedId, productIds: selectedProducts.map((item) => item.id) })
+        }}
+      >
+        <Table
+          rowKey="id"
+          loading={productLoading}
+          columns={productColumns}
+          dataSource={products}
+          scroll={{ x: 900 }}
+          rowSelection={{
+            selectedRowKeys: selectedProductRowKeys,
+            onChange: setSelectedProductRowKeys,
+          }}
+          pagination={{
+            current: productParams.page,
+            pageSize: productParams.pageSize,
+            total: productData?.data.data.total || 0,
+            onChange: (page, pageSize) => setProductParams({ ...productParams, page, pageSize }),
+          }}
+        />
+      </Modal>
+
+      <Drawer
+        title={detail ? `竞价项目详情 ${detail.projectNo}` : '竞价项目详情'}
+        open={selectedId !== null}
+        onClose={() => setSelectedId(null)}
+        width={1100}
+      >
+        {detail ? (
+          <Space direction="vertical" size="large" style={{ width: '100%' }}>
+            <Row gutter={12}>
+              <Col span={6}><Card size="small"><Statistic title="买家申请" value={detail.buyerRequestCount} suffix="单" /></Card></Col>
+              <Col span={6}><Card size="small"><Statistic title="参与买家" value={detail.buyerEnterpriseCount} suffix="家" /></Card></Col>
+              <Col span={6}><Card size="small"><Statistic title="已邀请卖家" value={detail.invitedSupplierCount} suffix="家" /></Card></Col>
+              <Col span={6}><Card size="small"><Statistic title="有效报价" value={detail.quotedSupplierCount} suffix="条" /></Card></Col>
+            </Row>
+
+            <Descriptions bordered column={2} size="small">
+              <Descriptions.Item label="状态">{projectStatusTag(detail.status)}</Descriptions.Item>
+              <Descriptions.Item label="报价截止">{formatDateTime(detail.quoteDeadline)}</Descriptions.Item>
+              <Descriptions.Item label="品类">{detail.subCategory || detail.category || '-'}</Descriptions.Item>
+              <Descriptions.Item label="采购物品">{detail.productName}</Descriptions.Item>
+              <Descriptions.Item label="归集需求">{quantity(detail.demandQuantity, detail.unit)}</Descriptions.Item>
+              <Descriptions.Item label="目标价">{money(detail.targetPrice)}</Descriptions.Item>
+              <Descriptions.Item label="中标卖家">{detail.awardSupplierName || '-'}</Descriptions.Item>
+              <Descriptions.Item label="中标报价">{detail.awardUnitPrice ? money(detail.awardUnitPrice) : '-'}</Descriptions.Item>
+              <Descriptions.Item label="订单号">{detail.orderNo || '-'}</Descriptions.Item>
+              <Descriptions.Item label="收货地址">{detail.deliveryAddress || '-'}</Descriptions.Item>
+              <Descriptions.Item label="管理备注" span={2}>{detail.adminRemark || '-'}</Descriptions.Item>
+            </Descriptions>
+
+            <Space wrap>
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => {
+                setProductParams({
+                  page: 1,
+                  pageSize: 8,
+                  status: 2,
+                  keyword: detail.subCategory || detail.category || detail.productName,
+                  category: detail.subCategory || detail.category,
+                })
+                setSelectedProductRowKeys([])
+                setInviteOpen(true)
+              }}>
+                邀请卖家
+              </Button>
+              {detail.status === 'awarded' && !detail.orderId ? (
+                <Popconfirm title="确认基于中标报价生成订单？" okText="生成" cancelText="取消" onConfirm={() => createOrderMutation.mutate({ id: detail.id })}>
+                  <Button icon={<FileDoneOutlined />} loading={createOrderMutation.isPending}>生成订单</Button>
+                </Popconfirm>
+              ) : null}
+            </Space>
+
+            <Card title="归集申请">
+              <Table rowKey="id" columns={requestColumns.filter((item) => item.key !== 'action')} dataSource={detail.requests || []} pagination={false} scroll={{ x: 900 }} />
+            </Card>
+
+            <Card title="参与卖家">
+              <Table rowKey="id" columns={enrollmentColumns} dataSource={detail.enrollments || []} pagination={false} scroll={{ x: 780 }} />
+            </Card>
+
+            <Card title="报价对比">
+              <Table rowKey="id" loading={detailLoading} columns={quoteColumns} dataSource={detail.quotes || []} pagination={false} scroll={{ x: 1100 }} />
+            </Card>
+          </Space>
+        ) : null}
+      </Drawer>
     </Space>
   )
 }
