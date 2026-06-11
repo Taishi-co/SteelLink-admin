@@ -1592,8 +1592,8 @@ func ListProducts(c *gin.Context) {
 		args = append(args, enterpriseID)
 	}
 	if category := strings.TrimSpace(c.Query("category")); category != "" {
-		whereParts = append(whereParts, "category = ?")
-		args = append(args, category)
+		whereParts = append(whereParts, "(category = ? OR sub_category = ?)")
+		args = append(args, category, category)
 	}
 	if subCategory := strings.TrimSpace(c.Query("subCategory")); subCategory != "" {
 		whereParts = append(whereParts, "sub_category = ?")

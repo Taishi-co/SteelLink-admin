@@ -414,12 +414,13 @@ export default function GroupProcurementPage() {
 
             <Space wrap>
               <Button type="primary" icon={<PlusOutlined />} onClick={() => {
+                const searchKeyword = [detail.subCategory, detail.category, detail.productName].filter(Boolean).join(' ')
                 setProductParams({
                   page: 1,
                   pageSize: 8,
                   status: 2,
-                  keyword: detail.subCategory || detail.category || detail.productName,
-                  category: detail.subCategory || detail.category,
+                  keyword: searchKeyword || undefined,
+                  category: detail.category || undefined,
                 })
                 setSelectedProductRowKeys([])
                 setInviteOpen(true)
